@@ -78,7 +78,19 @@ def check_semantic_scholar(doi: str) -> dict:
             title = data.get("title", "")
             oa_data = data.get("openAccessPdf") or {}
             pdf_url = oa_data.get("url")
+            
+            # Kiểm tra xem đây có phải link PDF thật hay chỉ là landing page web (như doi.org / sciencedirect)
+            is_real_pdf = False
             if pdf_url and pdf_url.startswith("http"):
+                url_lower = pdf_url.lower()
+                if "doi.org" in url_lower and not url_lower.endswith(".pdf"):
+                    is_real_pdf = False
+                elif "sciencedirect.com" in url_lower and "/pdf" not in url_lower and not url_lower.endswith(".pdf"):
+                    is_real_pdf = False
+                else:
+                    is_real_pdf = True
+
+            if is_real_pdf:
                 return {
                     "found": True,
                     "has_pdf": True,
