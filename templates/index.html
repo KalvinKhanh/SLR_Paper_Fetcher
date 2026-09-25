@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SLR Paper Fetcher</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #F8FAFC;
+        }
+        .custom-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .pulse-loading {
+            animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .4; }
+        }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen flex flex-col justify-between">
+
+    <!-- Header -->
+    <header class="border-b border-slate-200 bg-white/80 sticky top-0 z-50 backdrop-blur-md">
+        <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold shadow-md shadow-blue-500/20">
+                    P
+                </div>
+                <div>
+                    <span class="font-bold text-lg tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">SLR Paper Fetcher</span>
+                    <span class="text-[11px] block text-slate-400 -mt-1 font-medium">Hỗ trợ tải bài báo nghiên cứu & tích hợp VNU Library</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 text-xs font-medium">
+                <div class="bg-blue-50/80 border border-blue-200/80 text-blue-900 px-3 py-1.5 rounded-lg flex items-center gap-2">
+                    <span class="font-semibold text-blue-700">Tài khoản VNU:</span>
+                    <span class="font-mono bg-white px-1.5 py-0.5 rounded border border-blue-200">1100002598002</span>
+                    <span class="text-slate-400">|</span>
+                    <span class="font-mono bg-white px-1.5 py-0.5 rounded border border-blue-200">12345678</span>
+                </div>
+                <button onclick="openFolder()" class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 transition-all">
+                    <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                    <span>Mở thư mục đã tải</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-6xl mx-auto px-6 py-8 flex-1 w-full">
+        <!-- Banner / Intro -->
+        <div class="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Thu thập Full Text tài liệu SLR</h1>
+                <p class="text-slate-500 text-sm mt-1">Ưu tiên tìm bản Open Access miễn phí trên mạng. Nếu bị khóa (Paywalled) sẽ chuyển tiếp qua Cổng OpenAthens Thư viện ĐHQG-HCM.</p>
+            </div>
+            <div class="flex items-center gap-3 text-xs text-slate-500 font-medium">
+                <span class="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full border border-emerald-100">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Open Access (Unpaywall)
+                </span>
+                <span class="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-100">
+                    <span class="w-2 h-2 rounded-full bg-blue-500"></span> VNU OpenAthens Proxy
+                </span>
+            </div>
+        </div>
+
+        <!-- Input Section -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <!-- Textarea Input -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 custom-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="block text-sm font-semibold text-slate-700">Dán danh sách DOI / URL</label>
+                        <span class="text-xs text-slate-400">Mỗi dòng 1 mã</span>
+                    </div>
+                    <textarea id="doiInput" rows="6" class="w-full text-sm p-3.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono leading-relaxed" placeholder="10.1016/j.jss.2021.111111&#10;10.1145/3377811.3380321&#10;https://doi.org/10.1038/nature12373"></textarea>
+                </div>
+                <button id="btnText" onclick="processInput('text')" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl transition-all shadow-sm shadow-blue-500/10 flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    <span>Kiểm tra & Tìm Link</span>
+                </button>
+            </div>
+
+            <!-- File Upload -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 custom-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="block text-sm font-semibold text-slate-700">Tải lên file Excel / CSV</label>
+                        <span class="text-xs text-slate-400">Tự động nhận diện cột DOI</span>
+                    </div>
+                    <div id="dropZone" class="border-2 border-dashed border-slate-200 rounded-xl p-8 flex flex-col items-center justify-center text-center hover:border-blue-400 transition-all cursor-pointer bg-slate-50/50">
+                        <svg class="w-9 h-9 text-slate-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                        <span class="text-sm font-medium text-slate-700">Bấm để chọn file hoặc kéo thả vào đây</span>
+                        <span class="text-xs text-slate-400 mt-1">Hỗ trợ file .xlsx, .xls, .csv (ví dụ file slr_screening_log.xlsx)</span>
+                        <input type="file" id="fileInput" class="hidden" accept=".xlsx, .xls, .csv">
+                    </div>
+                    <div id="fileNameDisplay" class="text-xs font-medium text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg mt-2 hidden truncate flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        <span id="fileNameText"></span>
+                    </div>
+                </div>
+                <button id="btnFile" onclick="processInput('file')" class="mt-4 w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    <span>Xử lý file Excel</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading indicator -->
+        <div id="loadingIndicator" class="bg-white p-8 rounded-2xl border border-slate-200 custom-shadow mb-8 text-center hidden">
+            <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-50 text-blue-600 mb-3 pulse-loading">
+                <svg class="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            </div>
+            <h3 class="text-sm font-semibold text-slate-800">Đang tra cứu dữ liệu bài báo...</h3>
+            <p class="text-xs text-slate-400 mt-1">Đang kiểm tra kho mở Unpaywall và tạo đường dẫn qua Thư viện VNU</p>
+        </div>
+
+        <!-- Results Table -->
+        <div id="resultsSection" class="bg-white rounded-2xl border border-slate-200 custom-shadow overflow-hidden hidden">
+            <div class="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="flex items-center gap-2">
+                    <span class="font-semibold text-sm text-slate-800">Danh sách kết quả</span>
+                    <span id="resultCount" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">0</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="downloadAllOA()" id="btnDownloadAll" class="text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        <span>Tải về tất cả Open Access</span>
+                    </button>
+                    <button onclick="clearResults()" class="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 font-medium">Xóa bảng</button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm text-slate-600">
+                    <thead class="bg-slate-50 border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                        <tr>
+                            <th class="p-4">Tên file lưu</th>
+                            <th class="p-4">Tiêu đề / DOI</th>
+                            <th class="p-4">Trạng thái</th>
+                            <th class="p-4 text-right">Hành động tải / Truy cập</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody" class="divide-y divide-slate-100">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-200 bg-white/50 py-4 mt-8">
+        <div class="max-w-6xl mx-auto px-6 text-center text-xs text-slate-400">
+            SLR Paper Fetcher • Hỗ trợ Systematic Literature Review • ĐHQG-HCM
+        </div>
+    </footer>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const dropZone = document.getElementById('dropZone');
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+        const fileNameText = document.getElementById('fileNameText');
+        let currentResults = [];
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                fileNameText.textContent = fileInput.files[0].name;
+                fileNameDisplay.classList.remove('hidden');
+            }
+        });
+
+        // Drag & Drop
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-blue-500', 'bg-blue-50/20');
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-blue-500', 'bg-blue-50/20');
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-blue-500', 'bg-blue-50/20');
+            if (e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files;
+                fileNameText.textContent = e.dataTransfer.files[0].name;
+                fileNameDisplay.classList.remove('hidden');
+            }
+        });
+
+        async function processInput(type) {
+            const formData = new FormData();
+            if (type === 'text') {
+                const dois = document.getElementById('doiInput').value;
+                if (!dois.trim()) return alert('Vui lòng nhập ít nhất một DOI.');
+                formData.append('dois', dois);
+            } else {
+                if (!fileInput.files.length) return alert('Vui lòng chọn file Excel hoặc CSV.');
+                formData.append('file', fileInput.files[0]);
+            }
+
+            document.getElementById('loadingIndicator').classList.remove('hidden');
+            document.getElementById('resultsSection').classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/process', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                document.getElementById('loadingIndicator').classList.add('hidden');
+                
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    currentResults = data.results;
+                    displayResults(data.results);
+                }
+            } catch (e) {
+                document.getElementById('loadingIndicator').classList.add('hidden');
+                alert('Có lỗi xảy ra khi kết nối tới máy chủ.');
+            }
+        }
+
+        function displayResults(results) {
+            const tbody = document.getElementById('resultsBody');
+            tbody.innerHTML = '';
+            document.getElementById('resultCount').textContent = results.length;
+            
+            results.forEach((res, index) => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50/70 transition-colors';
+                
+                let statusBadge = '';
+                if (res.status === 'Open Access') {
+                    statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200">Open Access (Tải ngay)</span>`;
+                } else if (res.status === 'Open Access (Web)') {
+                    statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-cyan-50 text-cyan-700 border border-cyan-200">Open Access (Mở web)</span>`;
+                } else if (res.status === 'Paywalled') {
+                    statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">Truy cập qua VNU</span>`;
+                } else {
+                    statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-red-50 text-red-600 border border-red-200">Sai định dạng</span>`;
+                }
+
+                let actions = '';
+                if (res.oa_link) {
+                    let sourceBadge = res.source ? `<span class="text-[10px] text-slate-400 block mb-1">Nguồn: ${res.source}</span>` : '';
+                    actions += `
+                        <div class="inline-block text-right" id="action-cell-${index}">
+                            ${sourceBadge}
+                            <button onclick="downloadToFolder('${res.oa_link}', '${res.custom_name}', ${index})" id="dl-btn-${index}" class="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg transition-all mr-1.5">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                <span>Tải ngay</span>
+                            </button>
+                            <a href="${res.oa_link}" target="_blank" title="Mở link file trực tiếp trên trình duyệt" class="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-1.5 rounded-lg transition-all">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                            </a>
+                        </div>
+                    `;
+                } else if (res.oa_landing) {
+                    actions += `
+                        <div class="inline-block text-right">
+                            <a href="${res.oa_landing}" target="_blank" title="Mở trang web bài báo Open Access" class="inline-flex items-center gap-1 text-xs font-medium text-cyan-700 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 px-3 py-1.5 rounded-lg transition-all mr-1.5">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                <span>Mở trang bài báo</span>
+                            </a>
+                            <a href="${res.vnu_link}" target="_blank" title="Mở qua VNU" class="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2.5 py-1.5 rounded-lg transition-all">
+                                <span>VNU</span>
+                            </a>
+                        </div>
+                    `;
+                } else if (res.vnu_link) {
+                    actions += `
+                        <button onclick="autoDownloadVNU('${res.doi}', '${res.custom_name}', ${index})" id="vnu-btn-${index}" class="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg transition-all mr-1.5 shadow-sm">
+                            <svg class="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                            <span>Tự động tải (Bot VNU)</span>
+                        </button>
+                        <a href="${res.vnu_link}" target="_blank" title="Mở trang web VNU để xem trực tiếp nếu muốn" class="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2.5 py-1.5 rounded-lg transition-all">
+                            <span>Mở link</span>
+                            <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                        </a>
+                    `;
+                }
+
+                tr.innerHTML = `
+                    <td class="p-4 align-top">
+                        <span class="inline-block font-mono text-xs font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded border border-slate-200">${res.custom_name}</span>
+                    </td>
+                    <td class="p-4 align-top max-w-md">
+                        <div class="font-medium text-slate-800 leading-snug line-clamp-2">${res.title || res.doi || res.original}</div>
+                        <div class="text-xs text-slate-400 font-mono mt-1">${res.doi || res.original}</div>
+                    </td>
+                    <td class="p-4 align-top">${statusBadge}</td>
+                    <td class="p-4 align-top text-right whitespace-nowrap">${actions}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('resultsSection').classList.remove('hidden');
+        }
+
+        async function downloadToFolder(url, filename, index, isBatch = false) {
+            const btn = document.getElementById(`dl-btn-${index}`);
+            if (btn) {
+                btn.innerHTML = `<span class="pulse-loading">Đang tải...</span>`;
+                btn.disabled = true;
+            }
+
+            const formData = new FormData();
+            formData.append('url', url);
+            formData.append('filename', filename);
+
+            try {
+                const res = await fetch('/api/download', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (btn) {
+                        btn.className = "inline-flex items-center gap-1 text-xs font-medium text-emerald-800 bg-emerald-100 border border-emerald-300 px-3 py-1.5 rounded-lg mr-2";
+                        btn.innerHTML = `<span>✓ Đã lưu</span>`;
+                    }
+                    return { success: true };
+                } else {
+                    if (btn) {
+                        btn.className = "inline-flex items-center gap-1 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-300 px-3 py-1.5 rounded-lg mr-2";
+                        btn.innerHTML = `<span>⚠ Mở web tải</span>`;
+                        btn.title = data.error;
+                        btn.onclick = () => window.open(url, '_blank');
+                        btn.disabled = false;
+                    }
+                    if (!isBatch) {
+                        alert(data.error);
+                    }
+                    return { success: false, error: data.error };
+                }
+            } catch (e) {
+                if (btn) {
+                    btn.innerHTML = `<span>Lỗi kết nối</span>`;
+                    btn.disabled = false;
+                }
+                if (!isBatch) alert('Không thể kết nối đến máy chủ.');
+                return { success: false, error: 'Lỗi kết nối' };
+            }
+        }
+
+        async function autoDownloadVNU(doi, filename, index) {
+            const btn = document.getElementById(`vnu-btn-${index}`);
+            if (btn) {
+                btn.innerHTML = `<span class="pulse-loading">🤖 Đang tự động hóa tải...</span>`;
+                btn.disabled = true;
+            }
+
+            const formData = new FormData();
+            formData.append('doi', doi);
+            formData.append('filename', filename);
+
+            try {
+                const res = await fetch('/api/auto-vnu', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (btn) {
+                        btn.className = "inline-flex items-center gap-1 text-xs font-medium text-emerald-800 bg-emerald-100 border border-emerald-300 px-3 py-1.5 rounded-lg mr-1.5";
+                        btn.innerHTML = `<span>✓ ${data.message || 'Đã tải xong'}</span>`;
+                    }
+                } else {
+                    alert('Thông báo từ Bot: ' + data.error);
+                    if (btn) {
+                        btn.innerHTML = `<span>Thử lại</span>`;
+                        btn.disabled = false;
+                    }
+                }
+            } catch (e) {
+                alert('Không thể kết nối đến Bot tải tự động.');
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        async function downloadAllOA() {
+            const oaItems = currentResults.map((item, index) => ({ item, index })).filter(x => x.item.oa_link);
+            if (oaItems.length === 0) {
+                return alert('Không có bài báo Open Access dạng PDF trực tiếp để tải.');
+            }
+            
+            const btn = document.getElementById('btnDownloadAll');
+            btn.innerHTML = `<span>Đang tải ${oaItems.length} file...</span>`;
+            btn.disabled = true;
+
+            let successCount = 0;
+            let failCount = 0;
+
+            for (const { item, index } of oaItems) {
+                const res = await downloadToFolder(item.oa_link, item.custom_name, index, true);
+                if (res && res.success) {
+                    successCount++;
+                } else {
+                    failCount++;
+                }
+            }
+
+            if (failCount === 0) {
+                btn.innerHTML = `<span>✓ Đã tải xong cả ${successCount} file!</span>`;
+            } else {
+                btn.innerHTML = `<span>Xong (${successCount} tải về, ${failCount} cần mở web)</span>`;
+                alert(`Đã tải xong: ${successCount} file thành công.\n${failCount} file bị bảo vệ bởi tường lửa chống bot của nhà xuất bản, hệ thống đã chuyển nút sang "⚠ Mở web tải" để bạn bấm tải trực tiếp.`);
+            }
+
+            setTimeout(() => {
+                btn.innerHTML = `<span>Tải về tất cả Open Access</span>`;
+                btn.disabled = false;
+            }, 4000);
+        }
+
+        async function openFolder() {
+            try {
+                await fetch('/api/open-folder');
+            } catch (e) {
+                alert('Không thể mở thư mục trên máy tính.');
+            }
+        }
+
+        function clearResults() {
+            currentResults = [];
+            document.getElementById('resultsBody').innerHTML = '';
+            document.getElementById('resultsSection').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
