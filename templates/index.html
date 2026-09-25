@@ -45,9 +45,13 @@
                     <span class="text-slate-400">|</span>
                     <span class="font-mono bg-white px-1.5 py-0.5 rounded border border-blue-200">12345678</span>
                 </div>
+                <button onclick="syncAllFromDownloads()" title="Tự động đồng bộ các file PDF vừa tải từ thư mục Downloads của máy tính vào Project" class="px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 bg-blue-50/80 hover:bg-blue-100 flex items-center gap-1.5 transition-all">
+                    <svg class="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    <span>Đồng bộ từ Downloads</span>
+                </button>
                 <button onclick="openFolder()" class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 transition-all">
                     <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
-                    <span>Mở thư mục đã tải</span>
+                    <span>Mở thư mục Project</span>
                 </button>
             </div>
         </div>
@@ -130,9 +134,9 @@
                     <span id="resultCount" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">0</span>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button onclick="downloadAllOA()" id="btnDownloadAll" class="text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5">
+                    <button onclick="downloadAllOA()" id="btnDownloadAll" class="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                        <span>Tải về tất cả Open Access</span>
+                        <span>Tải tất cả file khả dụng</span>
                     </button>
                     <button onclick="clearResults()" class="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 font-medium">Xóa bảng</button>
                 </div>
@@ -239,22 +243,37 @@
                 
                 let statusBadge = '';
                 if (res.status === 'Open Access') {
-                    statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200">Open Access (Tải ngay)</span>`;
+                    statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">Open Access (Tải ngay)</span>`;
+                } else if (res.status === 'Bypass Paywall') {
+                    statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">Bypass Paywall (Tải ngay)</span>`;
                 } else if (res.status === 'Open Access (Web)') {
                     statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-cyan-50 text-cyan-700 border border-cyan-200">Open Access (Mở web)</span>`;
                 } else if (res.status === 'Paywalled') {
-                    statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">Truy cập qua VNU</span>`;
+                    statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">Truy cập qua VNU</span>`;
                 } else {
                     statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-red-50 text-red-600 border border-red-200">Sai định dạng</span>`;
                 }
 
                 let actions = '';
-                if (res.oa_link) {
+                if (res.already_exists) {
+                    statusBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">✓ Đã có trong Project</span>`;
+                    actions = `
+                        <div class="inline-block text-right">
+                            <button onclick="openFolder()" class="inline-flex items-center gap-1 text-xs font-medium text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 px-3 py-1.5 rounded-lg transition-all mr-1.5">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                <span>Đã có trong Project</span>
+                            </button>
+                            <a href="${res.oa_link || res.vnu_link}" target="_blank" title="Mở link bài báo" class="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-1.5 rounded-lg transition-all">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                            </a>
+                        </div>
+                    `;
+                } else if (res.oa_link) {
                     let sourceBadge = res.source ? `<span class="text-[10px] text-slate-400 block mb-1">Nguồn: ${res.source}</span>` : '';
                     actions += `
                         <div class="inline-block text-right" id="action-cell-${index}">
                             ${sourceBadge}
-                            <button onclick="downloadToFolder('${res.oa_link}', '${res.custom_name}', ${index})" id="dl-btn-${index}" class="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg transition-all mr-1.5">
+                            <button onclick="downloadToFolder('${res.oa_link}', '${res.custom_name}', ${index})" id="dl-btn-${index}" class="inline-flex items-center gap-1 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm px-3.5 py-1.5 rounded-lg transition-all mr-1.5">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                                 <span>Tải ngay</span>
                             </button>
@@ -277,14 +296,15 @@
                     `;
                 } else if (res.vnu_link) {
                     actions += `
-                        <button onclick="autoDownloadVNU('${res.doi}', '${res.custom_name}', ${index})" id="vnu-btn-${index}" class="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg transition-all mr-1.5 shadow-sm">
-                            <svg class="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                            <span>Tự động tải (Bot VNU)</span>
-                        </button>
-                        <a href="${res.vnu_link}" target="_blank" title="Mở trang web VNU để xem trực tiếp nếu muốn" class="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2.5 py-1.5 rounded-lg transition-all">
-                            <span>Mở link</span>
-                            <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                        </a>
+                        <div class="inline-block text-right" id="action-cell-${index}">
+                            <a href="${res.vnu_link}" target="_blank" onclick="trackManualVNU('${res.custom_name}', ${index})" class="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 px-3.5 py-1.5 rounded-lg shadow-sm transition-all mr-1.5">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                <span>Mở tải qua VNU</span>
+                            </a>
+                            <button onclick="autoDownloadVNU('${res.doi}', '${res.custom_name}', ${index})" id="vnu-btn-${index}" title="Thử bot tự động chạy ngầm" class="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2.5 py-1.5 rounded-lg transition-all">
+                                <span>🤖 Bot VNU</span>
+                            </button>
+                        </div>
                     `;
                 }
 
@@ -326,20 +346,13 @@
                     if (btn) {
                         btn.className = "inline-flex items-center gap-1 text-xs font-medium text-emerald-800 bg-emerald-100 border border-emerald-300 px-3 py-1.5 rounded-lg mr-2";
                         btn.innerHTML = `<span>✓ Đã lưu</span>`;
+                        btn.disabled = false;
+                        btn.onclick = () => openFolder();
                     }
                     return { success: true };
                 } else {
-                    if (btn) {
-                        btn.className = "inline-flex items-center gap-1 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-300 px-3 py-1.5 rounded-lg mr-2";
-                        btn.innerHTML = `<span>⚠ Mở web tải</span>`;
-                        btn.title = data.error;
-                        btn.onclick = () => window.open(url, '_blank');
-                        btn.disabled = false;
-                    }
-                    if (!isBatch) {
-                        alert(data.error);
-                    }
-                    return { success: false, error: data.error };
+                    // Tự động vượt tường lửa bot bằng trình duyệt thật và chuyển file về Project
+                    return await openAndSync(url, filename, index);
                 }
             } catch (e) {
                 if (btn) {
@@ -349,6 +362,55 @@
                 if (!isBatch) alert('Không thể kết nối đến máy chủ.');
                 return { success: false, error: 'Lỗi kết nối' };
             }
+        }
+
+        async function openAndSync(url, filename, index) {
+            const btn = document.getElementById(`dl-btn-${index}`);
+            window.open(url, '_blank');
+            if (btn) {
+                btn.className = "inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-300 px-3 py-1.5 rounded-lg mr-2";
+                btn.innerHTML = `<span class="pulse-loading">⏳ Vượt bot & lưu...</span>`;
+                btn.disabled = true;
+            }
+
+            return new Promise((resolve) => {
+                let attempts = 0;
+                const interval = setInterval(async () => {
+                    attempts++;
+                    try {
+                        const formData = new FormData();
+                        formData.append('filename', filename);
+                        formData.append('url', url);
+                        const res = await fetch('/api/sync-recent-download', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            clearInterval(interval);
+                            if (btn) {
+                                btn.className = "inline-flex items-center gap-1 text-xs font-medium text-emerald-800 bg-emerald-100 border border-emerald-300 px-3 py-1.5 rounded-lg mr-2";
+                                btn.innerHTML = `<span>✓ Đã lưu</span>`;
+                                btn.disabled = false;
+                                btn.onclick = () => openFolder();
+                            }
+                            resolve({ success: true });
+                            return;
+                        }
+                    } catch (e) {}
+
+                    if (attempts >= 6) {
+                        clearInterval(interval);
+                        if (btn) {
+                            btn.className = "inline-flex items-center gap-1 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-300 px-3 py-1.5 rounded-lg mr-2";
+                            btn.innerHTML = `<span>⚠ Mở web tải</span>`;
+                            btn.disabled = false;
+                            btn.onclick = () => openAndSync(url, filename, index);
+                        }
+                        resolve({ success: false, error: "Cần cho phép mở tab để tải" });
+                    }
+                }, 1500);
+            });
         }
 
         async function autoDownloadVNU(doi, filename, index) {
@@ -386,39 +448,106 @@
             }
         }
 
+        function trackManualVNU(filename, index) {
+            // Tự động lắng nghe file tải từ trình duyệt và kéo về project
+            let attempts = 0;
+            const interval = setInterval(async () => {
+                attempts++;
+                try {
+                    const formData = new FormData();
+                    formData.append('filename', filename);
+                    const res = await fetch('/api/sync-recent-download', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        clearInterval(interval);
+                        const cell = document.getElementById(`action-cell-${index}`);
+                        if (cell) {
+                            cell.innerHTML = `
+                                <button onclick="openFolder()" class="inline-flex items-center gap-1 text-xs font-medium text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 px-3 py-1.5 rounded-lg transition-all">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                    <span>✓ Đã lưu vào Project</span>
+                                </button>
+                            `;
+                        }
+                        if (currentResults[index]) {
+                            currentResults[index].already_exists = true;
+                        }
+                    }
+                } catch (e) {}
+
+                if (attempts >= 40) { // Lắng nghe trong 60 giây
+                    clearInterval(interval);
+                }
+            }, 1500);
+        }
+
         async function downloadAllOA() {
-            const oaItems = currentResults.map((item, index) => ({ item, index })).filter(x => x.item.oa_link);
-            if (oaItems.length === 0) {
-                return alert('Không có bài báo Open Access dạng PDF trực tiếp để tải.');
+            const directItems = currentResults.map((item, index) => ({ item, index })).filter(x => x.item.oa_link);
+            if (directItems.length === 0) {
+                return alert('Không có bài báo nào có link tải trực tiếp trong danh sách này.\nVới các bài báo khóa, bạn có thể click nút "Mở tải qua VNU" để tải qua cổng thư viện.');
+            }
+
+            const itemsToDownload = directItems.filter(x => !x.item.already_exists);
+            if (itemsToDownload.length === 0) {
+                return alert('Tất cả các bài báo khả dụng đều đã có sẵn trong thư mục Project!');
             }
             
             const btn = document.getElementById('btnDownloadAll');
-            btn.innerHTML = `<span>Đang tải ${oaItems.length} file...</span>`;
+            btn.innerHTML = `<span>Đang tải ${itemsToDownload.length} file...</span>`;
             btn.disabled = true;
 
             let successCount = 0;
             let failCount = 0;
 
-            for (const { item, index } of oaItems) {
+            for (let i = 0; i < itemsToDownload.length; i++) {
+                const { item, index } = itemsToDownload[i];
+                btn.innerHTML = `<span>Đang tải ${i + 1}/${itemsToDownload.length}...</span>`;
                 const res = await downloadToFolder(item.oa_link, item.custom_name, index, true);
                 if (res && res.success) {
                     successCount++;
+                    if (currentResults[index]) currentResults[index].already_exists = true;
                 } else {
                     failCount++;
                 }
             }
 
             if (failCount === 0) {
-                btn.innerHTML = `<span>✓ Đã tải xong cả ${successCount} file!</span>`;
+                btn.innerHTML = `<span>✓ Đã lưu đủ ${successCount} file!</span>`;
             } else {
-                btn.innerHTML = `<span>Xong (${successCount} tải về, ${failCount} cần mở web)</span>`;
-                alert(`Đã tải xong: ${successCount} file thành công.\n${failCount} file bị bảo vệ bởi tường lửa chống bot của nhà xuất bản, hệ thống đã chuyển nút sang "⚠ Mở web tải" để bạn bấm tải trực tiếp.`);
+                btn.innerHTML = `<span>Xong (${successCount} thành công, ${failCount} cần duyệt)</span>`;
             }
 
             setTimeout(() => {
-                btn.innerHTML = `<span>Tải về tất cả Open Access</span>`;
+                btn.innerHTML = `
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    <span>Tải tất cả file khả dụng</span>
+                `;
                 btn.disabled = false;
-            }, 4000);
+            }, 3500);
+        }
+
+        async function syncAllFromDownloads() {
+            try {
+                // Thử tìm file vừa tải mới nhất từ Downloads máy tính và chuyển vào
+                const formData = new FormData();
+                formData.append('filename', 'recent_download.pdf');
+                const res = await fetch('/api/sync-recent-download', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert(data.message);
+                    openFolder();
+                } else {
+                    alert(data.error || 'Chưa tìm thấy file PDF mới nào trong thư mục Downloads của Windows.');
+                }
+            } catch (e) {
+                alert('Không thể kết nối đến máy chủ.');
+            }
         }
 
         async function openFolder() {

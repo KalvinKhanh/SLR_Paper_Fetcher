@@ -1,3 +1,11 @@
+import sys
+import asyncio
+if sys.platform == "win32":
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    except Exception:
+        pass
+
 import os
 import re
 import io
@@ -21,7 +29,7 @@ app = FastAPI(title="SLR Paper Fetcher")
 os.makedirs("templates", exist_ok=True)
 templates = Jinja2Templates(directory="templates")
 
-from downloader_engine import extract_doi, check_unpaywall, check_scihub, download_file_direct, auto_download_vnu
+from downloader_engine import extract_doi, find_paper_fulltext, download_file_direct, auto_download_vnu
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -126,45 +134,26 @@ async def process_dois(dois: str = Form(None), file: UploadFile = File(None)):
         # 1. Check existing OA from Excel
         oa_link = None
         oa_landing = None
-        is_oa = False
         source = None
+        status = "Paywalled"
 
         if item.get("existing_oa") and item["existing_oa"].startswith("http"):
             oa_link = item["existing_oa"]
             title = item["custom_title"] or "Tài liệu Open Access"
-            is_oa = True
             source = "Excel Data"
+            status = "Open Access"
         else:
-            # 2. Check Unpaywall OA
-            oa_info = check_unpaywall(doi)
-            title = item["custom_title"] or oa_info.get("title") or "Unknown Title"
-            if oa_info.get("found"):
-                if oa_info.get("has_pdf"):
-                    is_oa = True
-                    oa_link = oa_info.get("url")
-                    oa_landing = oa_info.get("landing_url")
-                    source = "Unpaywall"
-                else:
-                    oa_landing = oa_info.get("landing_url")
-                    source = "Unpaywall"
-
-            # 3. Check Sci-Hub if No direct PDF link from Unpaywall
-            if not oa_link:
-                sh_link = check_scihub(doi)
-                if sh_link:
-                    is_oa = True
-                    oa_link = sh_link
-                    source = "Sci-Hub"
+            # 2. Quy trình kiểm tra đa tầng (Unpaywall -> Semantic Scholar -> Direct Mirrors Bypass Paywall)
+            fulltext_info = find_paper_fulltext(doi)
+            title = item["custom_title"] or fulltext_info.get("title") or "Unknown Title"
+            oa_link = fulltext_info.get("pdf_url")
+            oa_landing = fulltext_info.get("landing_url")
+            source = fulltext_info.get("source")
+            status = fulltext_info.get("status") or ("Open Access" if oa_link else "Paywalled")
 
         vnu_link = f"{settings.VNU_OPENATHENS_BASE_URL}https://doi.org/{doi}"
-        
-        # Phân loại trạng thái
-        if oa_link:
-            status = "Open Access"
-        elif oa_landing:
-            status = "Open Access (Web)"
-        else:
-            status = "Paywalled"
+
+        already_exists = (settings.DOWNLOAD_FOLDER / custom_name).exists()
 
         results.append({
             "original": raw_text,
@@ -172,6 +161,7 @@ async def process_dois(dois: str = Form(None), file: UploadFile = File(None)):
             "custom_name": custom_name,
             "title": title,
             "status": status,
+            "already_exists": already_exists,
             "oa_link": oa_link,
             "oa_landing": oa_landing,
             "source": source,
@@ -187,6 +177,45 @@ async def download_file(url: str = Form(...), filename: str = Form(...)):
     if success:
         return {"success": True, "path": str(target_path), "message": msg}
     return JSONResponse({"success": False, "error": msg})
+
+@app.post("/api/sync-recent-download")
+async def sync_recent_download(filename: str = Form(...), url: Optional[str] = Form(None)):
+    """Tìm file PDF mới tải trong thư mục Downloads của Windows và sao chép vào project."""
+    import shutil, time
+    from pathlib import Path
+    
+    user_downloads = Path.home() / "Downloads"
+    if not user_downloads.exists():
+        return JSONResponse({"success": False, "error": "Không tìm thấy thư mục Downloads của hệ thống."})
+    
+    target_path = settings.DOWNLOAD_FOLDER / filename
+    
+    # Quét các file PDF được tạo/sửa đổi trong 600 giây (10 phút) gần nhất
+    now = time.time()
+    candidates = []
+    for f in user_downloads.glob("*.pdf"):
+        try:
+            mtime = f.stat().st_mtime
+            if now - mtime < 600:
+                candidates.append((mtime, f))
+        except Exception:
+            continue
+            
+    if not candidates:
+        return JSONResponse({"success": False, "error": "Chưa thấy file PDF nào mới tải trong thư mục Downloads của máy tính."})
+        
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    latest_file = candidates[0][1]
+    
+    try:
+        shutil.copy2(latest_file, target_path)
+        try:
+            latest_file.unlink()
+        except Exception:
+            pass
+        return {"success": True, "message": f"Đã tự động chuyển '{latest_file.name}' vào thư mục downloads của project."}
+    except Exception as e:
+        return JSONResponse({"success": False, "error": f"Lỗi sao chép: {str(e)}"})
 
 @app.post("/api/auto-vnu")
 async def auto_vnu_endpoint(doi: str = Form(...), filename: str = Form(...)):

@@ -1,0 +1,20 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.tmp
+*.log
+
+# SLR Paper Fetcher Downloads directory
+# Ignore all downloaded papers and files inside downloads/
+downloads/*
+!downloads/.gitkeep
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Operating System files
+.DS_Store
+Thumbs.db
