@@ -383,3 +383,84 @@ def _run_sync_vnu(doi: str, output_filename: str) -> Tuple[bool, str]:
 async def auto_download_vnu(doi: str, output_filename: str) -> Tuple[bool, str]:
     """Hàm wrapper bất đồng bộ chạy Playwright trong thread pool để không block server."""
     return await asyncio.to_thread(_run_sync_vnu, doi, output_filename)
+
+def fetch_crossref_ris(doi: str, timeout: int = 5) -> Optional[str]:
+    """Lấy trực tiếp bản ghi trích dẫn RIS chuẩn từ CrossRef / DOI Registrar."""
+    if not doi or not doi.startswith("10."):
+        return None
+    url = f"https://doi.org/{doi}"
+    headers = {
+        "Accept": "application/x-research-info-systems",
+        "User-Agent": "SLR-Paper-Fetcher/1.0 (mailto:academic-research@vnulib.edu.vn)"
+    }
+    try:
+        r = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
+        if r.status_code == 200 and "TY  -" in r.text:
+            text = r.text.strip()
+            # Đảm bảo kết thúc bằng thẻ ER  -
+            if not text.endswith("ER  -"):
+                if "ER  -" not in text:
+                    text += "\nER  -"
+            return text
+    except Exception:
+        pass
+    return None
+
+def build_fallback_ris(doi: str = "", title: str = "", authors: Any = None, journal: str = "", year: str = "", url: str = "") -> str:
+    """Tạo bản ghi RIS tiêu chuẩn từ metadata sẵn có nếu không gọi được CrossRef."""
+    lines = ["TY  - JOUR"]
+    if title:
+        lines.append(f"TI  - {title.strip()}")
+        lines.append(f"T1  - {title.strip()}")
+    if authors:
+        if isinstance(authors, str):
+            author_list = [a.strip() for a in re.split(r'[,;]\s*', authors) if a.strip()]
+        else:
+            author_list = [str(a).strip() for a in authors if str(a).strip()]
+        for au in author_list:
+            lines.append(f"AU  - {au}")
+    if journal:
+        lines.append(f"JO  - {journal.strip()}")
+        lines.append(f"T2  - {journal.strip()}")
+    if year:
+        lines.append(f"PY  - {str(year).strip()}")
+    if doi:
+        clean_d = doi.strip()
+        lines.append(f"DO  - {clean_d}")
+        if not url:
+            url = f"https://doi.org/{clean_d}"
+    if url:
+        lines.append(f"UR  - {url.strip()}")
+    lines.append("ER  -")
+    return "\n".join(lines)
+
+def get_paper_ris(item: Dict[str, Any]) -> str:
+    """Lấy bản ghi RIS cho một bài báo (ưu tiên CrossRef chính thống, fallback cấu trúc chuẩn)."""
+    raw_doi = item.get("doi") or item.get("original") or ""
+    doi = extract_doi(raw_doi)
+    
+    if doi and doi.startswith("10."):
+        ris_text = fetch_crossref_ris(doi)
+        if ris_text:
+            return ris_text
+
+    # Fallback khi không kết nối được hoặc DOI không có trong CrossRef
+    title = item.get("title") or item.get("custom_title") or ""
+    journal = item.get("journal") or item.get("source") or ""
+    year = item.get("year") or ""
+    authors = item.get("authors") or []
+    url = item.get("oa_link") or item.get("vnu_link") or (f"https://doi.org/{doi}" if doi else "")
+    return build_fallback_ris(doi=doi, title=title, authors=authors, journal=journal, year=year, url=url)
+
+async def generate_combined_ris(items: list) -> str:
+    """Tạo nội dung file RIS tổng hợp cho danh sách các bài báo bằng cách chạy song song đa luồng."""
+    import concurrent.futures
+
+    loop = asyncio.get_running_loop()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        tasks = [loop.run_in_executor(pool, get_paper_ris, item) for item in items]
+        records = await asyncio.gather(*tasks)
+
+    valid_records = [r.strip() for r in records if r and r.strip()]
+    return "\n\n".join(valid_records) + "\n"
+

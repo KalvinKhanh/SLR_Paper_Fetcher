@@ -29,7 +29,14 @@ app = FastAPI(title="SLR Paper Fetcher")
 os.makedirs("templates", exist_ok=True)
 templates = Jinja2Templates(directory="templates")
 
-from downloader_engine import extract_doi, find_paper_fulltext, download_file_direct, auto_download_vnu
+from downloader_engine import (
+    extract_doi, 
+    find_paper_fulltext, 
+    download_file_direct, 
+    auto_download_vnu,
+    get_paper_ris,
+    generate_combined_ris
+)
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -55,6 +62,9 @@ async def process_dois(dois: str = Form(None), file: UploadFile = File(None)):
             filename_col = None
             title_col = None
             oa_col = None
+            journal_col = None
+            author_col = None
+            year_col = None
             
             for col in df.columns:
                 col_str = str(col).lower()
@@ -66,6 +76,12 @@ async def process_dois(dois: str = Form(None), file: UploadFile = File(None)):
                     title_col = col
                 elif not oa_col and ('link oa' in col_str or 'oa' in col_str or 'open access' in col_str):
                     oa_col = col
+                elif not journal_col and any(k in col_str for k in ['journal', 'tạp chí', 'nguồn', 'source', 'publisher', 'venue']):
+                    journal_col = col
+                elif not author_col and any(k in col_str for k in ['author', 'tác giả', 'authors']):
+                    author_col = col
+                elif not year_col and any(k in col_str for k in ['year', 'năm', 'pub_year', 'date']):
+                    year_col = col
 
             if not doi_col:
                 for col in df.columns:
@@ -82,13 +98,19 @@ async def process_dois(dois: str = Form(None), file: UploadFile = File(None)):
                 custom_name = str(row[filename_col]) if filename_col and pd.notna(row[filename_col]) else ""
                 custom_title = str(row[title_col]) if title_col and pd.notna(row[title_col]) else ""
                 existing_oa = str(row[oa_col]) if oa_col and pd.notna(row[oa_col]) else ""
+                custom_journal = str(row[journal_col]) if journal_col and pd.notna(row[journal_col]) else ""
+                custom_author = str(row[author_col]) if author_col and pd.notna(row[author_col]) else ""
+                custom_year = str(row[year_col]) if year_col and pd.notna(row[year_col]) else ""
 
                 if raw_doi.strip() and raw_doi.strip().lower() != 'nan':
                     items_to_process.append({
                         "raw": raw_doi,
                         "custom_name": custom_name,
                         "custom_title": custom_title,
-                        "existing_oa": existing_oa
+                        "existing_oa": existing_oa,
+                        "custom_journal": custom_journal,
+                        "custom_author": custom_author,
+                        "custom_year": custom_year
                     })
         except Exception as e:
             return JSONResponse({"error": f"Lỗi đọc file: {str(e)}"})
@@ -160,6 +182,9 @@ async def process_dois(dois: str = Form(None), file: UploadFile = File(None)):
             "doi": doi,
             "custom_name": custom_name,
             "title": title,
+            "journal": item.get("custom_journal") or source or "",
+            "authors": item.get("custom_author") or "",
+            "year": item.get("custom_year") or "",
             "status": status,
             "already_exists": already_exists,
             "oa_link": oa_link,
@@ -230,6 +255,53 @@ async def open_download_folder():
     if os.name == 'nt':
         os.startfile(folder_str)
     return {"success": True, "folder": folder_str}
+
+@app.post("/api/export-ris")
+async def export_ris_endpoint(request: Request):
+    """Xuất file trích dẫn RIS (.ris) cho danh sách các bài báo."""
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"success": False, "error": "Dữ liệu JSON không hợp lệ."})
+
+    items = data.get("items", [])
+    if not items:
+        return JSONResponse({"success": False, "error": "Không có bài báo nào để xuất RIS."})
+
+    filename = data.get("filename", "slr_citations.ris").strip()
+    if not filename.endswith(".ris"):
+        filename += ".ris"
+
+    try:
+        ris_content = await generate_combined_ris(items)
+        if not ris_content.strip():
+            return JSONResponse({"success": False, "error": "Không tạo được nội dung RIS nào."})
+
+        # Lưu một bản sao vào thư mục downloads của project
+        target_path = settings.DOWNLOAD_FOLDER / filename
+        with open(target_path, "w", encoding="utf-8") as f:
+            f.write(ris_content)
+
+        return {
+            "success": True,
+            "filename": filename,
+            "content": ris_content,
+            "count": len(items),
+            "saved_path": str(target_path)
+        }
+    except Exception as e:
+        return JSONResponse({"success": False, "error": f"Lỗi tạo file RIS: {str(e)}"})
+
+@app.get("/api/download-ris")
+async def download_ris_endpoint(filename: str = "slr_citations.ris"):
+    target_path = settings.DOWNLOAD_FOLDER / filename
+    if not target_path.exists():
+        return JSONResponse({"success": False, "error": "File không tồn tại."})
+    return FileResponse(
+        path=str(target_path),
+        filename=filename,
+        media_type="application/x-research-info-systems"
+    )
 
 def run_server():
     uvicorn.run("app:app", host=settings.APP_HOST, port=settings.APP_PORT, reload=True, log_level="warning")
