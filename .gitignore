@@ -4,6 +4,11 @@ __pycache__/
 *$py.class
 *.tmp
 *.log
+*.part
+.vnu-browser-state.json
+.vnu-browser-profile/
+.env
+data/
 
 # SLR Paper Fetcher Downloads directory
 # Ignore all downloaded papers and files inside downloads/
