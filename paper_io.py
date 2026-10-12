@@ -19,6 +19,30 @@ def normalize_doi(value):
     return value.lower() if DOI_PATTERN.fullmatch(value) else ""
 
 
+def generate_standardized_filename(doi, provided_filename="", title=""):
+    import datetime
+    safe_doi = re.sub(r'[\\/:\*?"<>|]', '_', str(doi).strip())
+    
+    fname = str(provided_filename or "").strip()
+    if fname and fname.lower() != 'nan':
+        if fname.lower().endswith('.pdf'):
+            fname = fname[:-4]
+    else:
+        fname = str(title or "").strip()
+        if not fname or fname.lower() == 'unknown title':
+            fname = "paper"
+            
+    safe_fname = re.sub(r'[\\/:\*?"<>|\s]+', '_', fname).strip('_')
+    if len(safe_fname) > 80:
+        safe_fname = safe_fname[:80].rstrip('_')
+        
+    date_str = datetime.datetime.now().strftime("%Y%m%d")
+    
+    final_name = f"{safe_doi}_{safe_fname}_{date_str}.pdf"
+    return safe_filename(final_name)
+
+
+
 def safe_filename(name, suffix=".pdf"):
     name = str(name or "").strip()
     if not name or name in (".", "..") or re.search(r'[\\/:\x00-\x1f]', name):
@@ -62,9 +86,17 @@ def provider_for_url(url):
         "Elsevier": ("sciencedirect.com", "elsevier.com", "sciencedirectassets.com"),
         "IEEE": ("ieeexplore.ieee.org",),
         "Springer": ("springer.com", "springernature.com", "nature.com"),
-        "Wiley": ("wiley.com",),
-        "TaylorFrancis": ("tandfonline.com",),
+        "Wiley": ("wiley.com", "onlinelibrary.wiley.com"),
+        "ACM": ("acm.org", "dl.acm.org"),
+        "TaylorFrancis": ("tandfonline.com", "taylorandfrancis.com"),
         "Sage": ("sagepub.com",),
+        "MDPI": ("mdpi.com",),
+        "Oxford": ("oup.com", "academic.oup.com"),
+        "Cambridge": ("cambridge.org",),
+        "IOP": ("iop.org", "iopscience.iop.org"),
+        "AIP": ("aip.org", "scitation.org"),
+        "Frontiers": ("frontiersin.org",),
+        "SSRN": ("ssrn.com",),
         "arXiv": ("arxiv.org",),
         "PMC": ("pmc.ncbi.nlm.nih.gov",),
     }

@@ -160,6 +160,7 @@ class BrowserManager:
                 self.pending_providers.pop(doi, None)
         if not self.pending_verifications:
             self.focus_requested.clear()
+            self.challenge_session = False
         provider = provider_for_url(page.url)
         if provider != "Generic" and not urlparse(page.url).path.lower().endswith(".pdf"):
             self.verified_pages[provider] = page
@@ -196,7 +197,17 @@ class BrowserManager:
         # It is browser UI, not an article tab, and cannot be closed with Page.close.
         if not self.context:
             return []
-        return [page for page in self.context.pages if page is not self.anchor
+        
+        def is_ui_tab(p):
+            if p is self.anchor:
+                return True
+            try:
+                url = p.url or ""
+                return f":{settings.APP_PORT}" in url or "127.0.0.1:" in url or "localhost:" in url
+            except Exception:
+                return False
+
+        return [page for page in self.context.pages if not is_ui_tab(page)
                 and not page.url.startswith(("edge://", "chrome://")) and not page.is_closed()]
 
     def _ensure(self):
@@ -206,9 +217,9 @@ class BrowserManager:
         self._close()
         self.playwright = sync_playwright().start()
         self.headless = settings.VNU_BROWSER_HEADLESS and not settings.VNU_ALLOW_MANUAL_VERIFICATION
-        options = {"headless": self.headless, "accept_downloads": True}
+        options = {"headless": self.headless, "accept_downloads": True, "no_viewport": True}
         if not self.headless:
-            options["args"] = ["--disable-blink-features=AutomationControlled"]
+            options["args"] = ["--disable-blink-features=AutomationControlled", "--start-maximized"]
             options["ignore_default_args"] = ["--enable-automation"]
         channel = settings.VNU_BROWSER_CHANNEL
         if channel not in ("chrome", "msedge", "chromium"):

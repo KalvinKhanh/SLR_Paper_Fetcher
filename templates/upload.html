@@ -1,0 +1,2510 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SLR Paper Fetcher</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            min-width: 100%;
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #F8FAFC;
+            overflow-x: hidden;
+        }
+        .custom-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+        }
+        .pulse-loading {
+            animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .4; }
+        }
+    </style>
+</head>
+<body class="text-slate-800 w-full min-w-full min-h-screen flex flex-col md:flex-row bg-slate-50 overflow-x-hidden">
+
+    <!-- Mobile Overlay -->
+    <div id="sidebarOverlay" onclick="toggleMobileSidebar()" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-20 hidden md:hidden transition-opacity"></div>
+
+    <!-- Left Sidebar Navigation -->
+    <aside id="sidebar" class="fixed md:sticky top-0 left-0 w-64 xl:w-72 bg-white border-r border-slate-200/90 flex flex-col shrink-0 h-screen z-30 transition-transform duration-300 -translate-x-full md:translate-x-0 custom-shadow md:shadow-none">
+        <!-- Brand Header -->
+        <div class="h-16 px-5 border-b border-slate-100 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-extrabold shadow-md shadow-blue-500/20 text-base">
+                    P
+                </div>
+                <div>
+                    <span class="font-bold text-base tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">SLR Fetcher</span>
+                    <span class="text-[10px] block text-slate-400 -mt-0.5 font-medium">Systematic Review Tool</span>
+                </div>
+            </div>
+            <!-- Mobile Close Button -->
+            <button onclick="toggleMobileSidebar()" class="md:hidden text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+
+        <!-- Navigation Menu -->
+        <div class="flex-1 py-5 px-3 flex flex-col justify-between overflow-y-auto">
+            <div class="space-y-6">
+                <!-- Main Nav Group -->
+                <div>
+                    <p class="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Chức năng chính</p>
+                    <nav class="space-y-1.5">
+                        <!-- Tab 1: Fetch & Download -->
+                        <a href="/" onclick="switchTab(event, 'fetch')" id="navTabFetch" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all {% if active_tab == 'fetch' or not active_tab %}bg-blue-50 text-blue-700 shadow-sm shadow-blue-500/5 font-bold border border-blue-100/80{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100/70{% endif %}">
+                            <div id="navIconFetch" class="w-7 h-7 rounded-lg flex items-center justify-center {% if active_tab == 'fetch' or not active_tab %}bg-blue-600 text-white shadow-sm shadow-blue-500/20{% else %}bg-slate-100 text-slate-500{% endif %}">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            </div>
+                            <span>Thu thập & Tải bài</span>
+                            <span id="scanRunningBadge" class="hidden ml-auto flex items-center gap-1 bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                <span class="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
+                                <span>Đang quét</span>
+                            </span>
+                        </a>
+
+                        <!-- Tab 2: Selected Library & Upload -->
+                        <a href="/upload" onclick="switchTab(event, 'upload')" id="navTabUpload" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all {% if active_tab == 'upload' %}bg-indigo-50 text-indigo-700 shadow-sm shadow-indigo-500/5 font-bold border border-indigo-100/80{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100/70{% endif %}">
+                            <div id="navIconUpload" class="w-7 h-7 rounded-lg flex items-center justify-center {% if active_tab == 'upload' %}bg-indigo-600 text-white shadow-sm shadow-indigo-500/20{% else %}bg-slate-100 text-slate-500{% endif %}">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                            </div>
+                            <span>Kho bài & Upload</span>
+                            <span id="navDownloadedBadge" class="ml-auto bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded-full font-bold">...</span>
+                        </a>
+                    </nav>
+                </div>
+
+                <!-- Utilities Group -->
+                <div>
+                    <p class="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Thao tác nhanh</p>
+                    <div class="space-y-1">
+                        <button onclick="restoreSavedResults()" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 transition-all text-left">
+                            <div class="w-7 h-7 rounded-lg flex items-center justify-center bg-slate-100 text-slate-500">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            </div>
+                            <span>Khôi phục danh sách</span>
+                        </button>
+
+                        <button onclick="openFolder()" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 transition-all text-left">
+                            <div class="w-7 h-7 rounded-lg flex items-center justify-center bg-slate-100 text-slate-500">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                            </div>
+                            <span>Mở thư mục Downloads</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Institutional Card -->
+            <div class="mt-auto pt-4 border-t border-slate-100 space-y-3">
+                <div class="bg-slate-50 p-3 rounded-xl border border-slate-200/70 text-xs">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="font-semibold text-slate-700">VNU Library</span>
+                        {% if vnu_configured %}
+                        <span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Đã kết nối
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
+                            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Chưa lưu
+                        </span>
+                        {% endif %}
+                    </div>
+                    <p class="text-[11px] text-slate-400">OpenAthens ĐHQG-HCM</p>
+                </div>
+
+                <div class="px-2 text-[10px] text-slate-400 font-medium text-center">
+                    SLR Paper Fetcher • ĐHQG-HCM
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="flex-1 flex flex-col min-w-0 min-h-screen overflow-y-auto">
+        <!-- Top Action Bar -->
+        <header class="h-16 border-b border-slate-200/80 bg-white/80 sticky top-0 z-20 backdrop-blur-md px-6 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <button onclick="toggleMobileSidebar()" class="md:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                </button>
+                <div class="flex items-center gap-2 text-xs text-slate-500 font-medium">
+                    <span>Hệ thống</span>
+                    <span>/</span>
+                    <span id="headerBreadcrumbTitle" class="text-slate-800 font-bold">{% if active_tab == "upload" %}Kho bài báo & Upload{% else %}Thu thập & Tải bài báo{% endif %}</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-2.5">
+                <button onclick="openFolder()" class="px-3.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 transition-all shadow-xs">
+                    <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+                    <span>Mở thư mục</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="w-full px-6 py-8 flex-1">
+        <!-- VIEW 1: THU THẬP & TẢI BÀI -->
+        <div id="viewFetch" class="{% if active_tab == 'upload' %}hidden{% endif %}">
+
+        <!-- Banner / Intro -->
+        <div class="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Thu thập Full Text tài liệu SLR</h1>
+                <p class="text-slate-500 text-sm mt-1">Ưu tiên tìm bản Open Access miễn phí trên mạng. Nếu bị khóa (Paywalled) sẽ chuyển tiếp qua Cổng OpenAthens Thư viện ĐHQG-HCM.</p>
+            </div>
+            <div class="flex items-center gap-3 text-xs text-slate-500 font-medium">
+                <span class="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full border border-emerald-100">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Open Access (Unpaywall)
+                </span>
+                <span class="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-100">
+                    <span class="w-2 h-2 rounded-full bg-blue-500"></span> VNU OpenAthens Proxy
+                </span>
+            </div>
+        </div>
+
+        <!-- Input Section -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <!-- Textarea Input -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 custom-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="block text-sm font-semibold text-slate-700">Dán danh sách DOI / URL</label>
+                        <span class="text-xs text-slate-400">Mỗi dòng 1 mã</span>
+                    </div>
+                    <textarea id="doiInput" rows="6" class="w-full text-sm p-3.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono leading-relaxed" placeholder="10.1016/j.jss.2021.111111&#10;10.1145/3377811.3380321&#10;https://doi.org/10.1038/nature12373"></textarea>
+                </div>
+                <button id="btnText" onclick="processInput('text')" class="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl transition-all shadow-sm shadow-blue-500/10 flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    <span>Kiểm tra & Tìm Link</span>
+                </button>
+            </div>
+
+            <!-- File Upload -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-200 custom-shadow flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="block text-sm font-semibold text-slate-700">Tải lên file Excel / CSV</label>
+                        <span class="text-xs text-slate-400">Tự động nhận diện cột DOI</span>
+                    </div>
+                    <div id="dropZone" class="border-2 border-dashed border-slate-200 rounded-xl p-8 flex flex-col items-center justify-center text-center hover:border-blue-400 transition-all cursor-pointer bg-slate-50/50">
+                        <svg class="w-9 h-9 text-slate-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                        <span class="text-sm font-medium text-slate-700">Bấm để chọn file hoặc kéo thả vào đây</span>
+                        <span class="text-xs text-slate-400 mt-1">Hỗ trợ file .xlsx, .xls, .csv (ví dụ file slr_screening_log.xlsx)</span>
+                        <input type="file" id="fileInput" class="hidden" accept=".xlsx, .xls, .csv">
+                    </div>
+                    <div id="fileNameDisplay" class="text-xs font-medium text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg mt-2 hidden truncate flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        <span id="fileNameText"></span>
+                    </div>
+                </div>
+                <button id="btnFile" onclick="processInput('file')" class="mt-4 w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    <span>Xử lý file Excel</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading indicator -->
+        <div id="loadingIndicator" class="bg-white p-8 rounded-2xl border border-slate-200 custom-shadow mb-8 text-center hidden">
+            <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-50 text-blue-600 mb-3 pulse-loading">
+                <svg class="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            </div>
+            <h3 class="text-sm font-semibold text-slate-800">Đang tra cứu dữ liệu bài báo...</h3>
+            <p class="text-xs text-slate-400 mt-1">Đang kiểm tra kho mở Unpaywall và tạo đường dẫn qua Thư viện VNU</p>
+            <div class="max-w-xl mx-auto mt-5">
+                <div class="flex justify-between text-xs font-medium text-slate-600 mb-2">
+                    <span id="scanProgressText">&#272;ang chu&#7849;n b&#7883; danh s&#225;ch DOI...</span>
+                    <span id="scanProgressPercent">0%</span>
+                </div>
+                <div class="h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div id="scanProgressBar" class="h-full bg-blue-600 rounded-full transition-all duration-300" style="width:0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Table -->
+        <div id="resultsSection" class="bg-white rounded-2xl border border-slate-200 custom-shadow overflow-hidden hidden">
+            <div class="p-4 border-b border-slate-100 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                <div class="flex flex-wrap items-center gap-3">
+                    <span class="font-semibold text-sm text-slate-800">Danh sách kết quả</span>
+                    <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                        <button id="tabFilterAll" onclick="setSourceFilter('all')" class="text-xs font-semibold px-2.5 py-1 rounded-md transition-all bg-white text-slate-800 shadow-sm">Tất cả <span id="countAll" class="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded ml-1 text-slate-500">0</span></button>
+                        <button id="tabFilterInterested" onclick="setSourceFilter('interested')" class="text-xs font-semibold px-2.5 py-1 rounded-md transition-all text-slate-500 hover:text-slate-700">⭐ Quan tâm <span id="countInterested" class="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded ml-1">0</span></button>
+                        <button id="tabFilterOther" onclick="setSourceFilter('other')" class="text-xs font-semibold px-2.5 py-1 rounded-md transition-all text-slate-500 hover:text-slate-700">Khác <span id="countOther" class="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded ml-1">0</span></button>
+                        <button onclick="openConfigModal()" class="text-xs font-semibold px-2 py-1 rounded-md transition-all text-blue-600 hover:bg-blue-100 ml-1 flex items-center gap-1" title="Cấu hình nguồn quan tâm">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="downloadAllOA()" id="btnDownloadAll" class="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        <span>Tải tự động tất cả (OA + VNU)</span>
+                    </button>
+                    <button onclick="exportAllRIS()" id="btnExportRIS" title="Xuất toàn bộ trích dẫn bài báo sang file chuẩn .RIS (dùng cho EndNote, Zotero, Mendeley, Rayyan)" class="text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm shadow-violet-500/10">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        <span>Xuất file RIS (.ris)</span>
+                    </button>
+                    <button onclick="clearResults()" class="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 font-medium">Xóa bảng</button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm text-slate-600">
+                    <thead class="bg-slate-50 border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                        <tr>
+                            <th class="p-4 w-72 min-w-[240px]">Tên file lưu</th>
+                            <th class="p-4 min-w-[320px]">Tiêu đề / DOI</th>
+                            <th class="p-4 w-36 min-w-[140px] whitespace-nowrap">Trạng thái</th>
+                            <th class="p-4 w-60 min-w-[220px] whitespace-nowrap text-right">Hành động tải / Truy cập</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody" class="divide-y divide-slate-100">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Modal: Cấu hình nguồn quan tâm -->
+        <div id="configSourcesModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 hidden opacity-0 transition-opacity duration-200" onclick="if(event.target === this) closeConfigModal()">
+            <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 m-4 transform scale-95 transition-transform duration-200" id="configSourcesModalBox">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div class="flex items-center gap-2">
+                        <span class="text-base p-1.5 rounded-lg bg-blue-50 text-blue-600">⚙️</span>
+                        <h3 class="font-bold text-slate-800 text-sm">Cấu hình nguồn quan tâm</h3>
+                    </div>
+                    <button type="button" onclick="closeConfigModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                <p class="text-xs text-slate-500 mt-2.5 leading-relaxed">Chọn các nhà xuất bản / kho bài báo bạn muốn ưu tiên. Các bài thuộc những nguồn này sẽ được gom riêng sang tab <b class="text-slate-700">⭐ Quan tâm</b>.</p>
+                
+                <div class="mt-4 space-y-2 max-h-64 overflow-y-auto pr-1" id="sourcesCheckboxList">
+                    <!-- Checkboxes rendered via JS -->
+                </div>
+
+                <div class="flex items-center justify-between pt-4 mt-4 border-t border-slate-100 text-xs">
+                    <div class="flex gap-2">
+                        <button type="button" onclick="selectAllSources(true)" class="text-blue-600 hover:underline font-medium">Chọn tất cả</button>
+                        <span class="text-slate-300">•</span>
+                        <button type="button" onclick="selectAllSources(false)" class="text-slate-500 hover:underline">Bỏ chọn</button>
+                    </div>
+                    <button type="button" onclick="saveSourcesConfig()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-xl transition-colors shadow-sm shadow-blue-500/20">Lưu cấu hình</button>
+                </div>
+            </div>
+        </div>
+    
+        </div>
+        
+        <!-- VIEW 2: KHO BÀI & UPLOAD -->
+        <div id="viewUpload" class="{% if active_tab != 'upload' %}hidden{% endif %} relative">
+
+        
+        <!-- Hero Section & Project Selection Banner -->
+        <div class="mb-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-6 shadow-xl border border-indigo-500/20 relative z-30">
+            <!-- Background glow decoration safely clipped -->
+            <div class="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+                <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl"></div>
+                <div class="absolute left-1/3 -top-10 w-48 h-48 bg-blue-500/10 rounded-full blur-2xl"></div>
+            </div>
+
+            <div class="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                <!-- Left Title & Description -->
+                <div class="max-w-xl">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="bg-indigo-500/20 text-indigo-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-indigo-400/30 flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            SLR Public API Integration
+                        </span>
+                        <span id="slrConnBadge" class="bg-emerald-500/20 text-emerald-300 text-[11px] font-semibold px-2 py-0.5 rounded-md border border-emerald-400/30 hidden">
+                            ✓ Đã kết nối Backend
+                        </span>
+                    </div>
+                    <h1 class="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
+                        Kho bài báo & Đẩy dữ liệu lên Dự án
+                    </h1>
+                    <p class="text-slate-300 text-xs mt-1.5 leading-relaxed">
+                        Chọn một Dự án SLR từ hệ thống để đẩy các file PDF đã tải về trực tiếp lên Cloudinary và trích xuất thông tin qua GROBID tự động.
+                    </p>
+                </div>
+
+                <!-- Right: Interactive Project Selector & Settings -->
+                <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto sm:min-w-[380px] lg:min-w-[480px] xl:min-w-[560px]">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="text-[11px] font-bold uppercase tracking-wider text-indigo-200 flex items-center gap-1.5">
+                                <span>🎯 Dự án đích (Target Project)</span>
+                            </label>
+                            <button type="button" onclick="loadSlrProjects()" class="text-[11px] text-indigo-300 hover:text-white flex items-center gap-1 hover:underline transition-all cursor-pointer" title="Tải lại danh sách dự án từ backend">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                <span>Làm mới</span>
+                            </button>
+                        </div>
+
+                        <!-- Custom Project Dropdown -->
+                        <div class="relative w-full" id="projectDropdownWrapper">
+                            <input type="hidden" id="projectSelect" value="">
+
+                            <!-- Trigger Button -->
+                            <button type="button" 
+                                    id="projectDropdownBtn" 
+                                    onclick="toggleProjectDropdown()" 
+                                    class="w-full bg-slate-900/90 hover:bg-slate-900 text-left text-white rounded-xl px-3.5 py-2 border border-indigo-400/40 hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all cursor-pointer flex items-center justify-between gap-2.5 shadow-inner">
+                                <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                                    <span id="projectDropdownIcon" class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-300 flex items-center justify-center shrink-0 text-sm">🎯</span>
+                                    <div class="min-w-0 flex-1">
+                                        <div class="font-semibold text-slate-200 text-xs truncate" id="projectDropdownTitle">-- Chọn Dự Án Đích để đẩy bài --</div>
+                                        <div class="text-[10px] text-slate-400 font-mono truncate hidden" id="projectDropdownSub">-</div>
+                                    </div>
+                                </div>
+                                <svg id="projectDropdownChevron" class="w-4 h-4 text-indigo-300 shrink-0 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </button>
+
+                            <!-- Dropdown Menu -->
+                            <div id="projectDropdownMenu" class="hidden absolute right-0 left-auto w-full sm:w-[520px] lg:w-[580px] max-w-[92vw] mt-2 bg-slate-900/95 backdrop-blur-xl border border-indigo-500/30 rounded-2xl shadow-2xl z-50 p-2 text-white overflow-hidden">
+                                <!-- Search filter -->
+                                <div class="p-1 pb-2 border-b border-white/10" id="projectSearchContainer">
+                                    <div class="relative">
+                                        <svg class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                        </svg>
+                                        <input type="text" id="projectSearchInput" oninput="filterProjectDropdown()" placeholder="Tìm theo tên dự án hoặc ID..." class="w-full bg-slate-800 text-white text-xs pl-8 pr-3 py-1.5 rounded-lg border border-white/10 focus:outline-none focus:border-indigo-400 font-medium">
+                                    </div>
+                                </div>
+
+                                <!-- Projects List -->
+                                <div id="projectDropdownList" class="max-h-72 overflow-y-auto py-1 space-y-1 pr-1">
+                                    <!-- Dynamic items -->
+                                </div>
+
+                                <!-- Manual Entry Option -->
+                                <div class="pt-1.5 mt-1 border-t border-white/10">
+                                    <button type="button" onclick="selectProjectItem('__manual__')" class="w-full text-left p-2.5 rounded-xl hover:bg-white/10 text-amber-300 hover:text-amber-200 flex items-center gap-2.5 text-xs font-semibold transition-colors cursor-pointer">
+                                        <span class="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0 text-xs">✏️</span>
+                                        <span>Tự nhập Mã Dự Án thủ công...</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Custom Project ID Input -->
+                            <div id="manualProjectContainer" class="hidden mt-2">
+                                <input type="text" id="manualProjectId" oninput="onManualProjectInput()" placeholder="Nhập mã dự án (VD: proj-test-123)" class="w-full bg-slate-900 text-white text-xs px-3 py-2 rounded-lg border border-amber-400/50 focus:outline-none focus:ring-1 focus:ring-amber-400 font-mono">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Config Settings Button -->
+                    <button type="button" onclick="openSlrConfigModal()" class="shrink-0 self-end sm:self-center bg-white/10 hover:bg-white/20 text-white px-3.5 py-2.5 rounded-lg border border-white/10 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer" title="Cấu hình kết nối SLR Server & API Key">
+                        <svg class="w-4 h-4 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        <span class="hidden sm:inline">Cấu hình API</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Metric Cards -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white p-4 rounded-xl border border-slate-200 custom-shadow flex items-center gap-4">
+                <div class="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                </div>
+                <div>
+                    <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Tổng đã tải</p>
+                    <p class="text-xl font-bold text-slate-800" id="metricTotal">0</p>
+                </div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-emerald-100 bg-emerald-50/20 custom-shadow flex items-center gap-4">
+                <div class="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </div>
+                <div>
+                    <p class="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider">Đang chọn</p>
+                    <p class="text-xl font-bold text-emerald-700" id="metricSelected">0</p>
+                </div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 custom-shadow flex items-center gap-4">
+                <div class="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center text-purple-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+                </div>
+                <div>
+                    <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Dung lượng chọn</p>
+                    <p class="text-xl font-bold text-slate-800" id="metricSize">0 MB</p>
+                </div>
+            </div>
+            <div class="bg-white p-4 rounded-xl border border-slate-200 custom-shadow flex items-center gap-4">
+                <div class="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2"></path></svg>
+                </div>
+                <div>
+                    <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Định dạng gửi</p>
+                    <p class="text-sm font-bold text-slate-800 mt-1">PDF + JSON</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="bg-white p-3 rounded-t-xl border border-slate-200 border-b-0 flex flex-col sm:flex-row gap-3 items-center justify-between">
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+                <button onclick="selectAll(true)" class="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg transition-colors">Chọn tất cả</button>
+                <button onclick="selectAll(false)" class="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg transition-colors">Bỏ chọn</button>
+                <div class="h-4 w-px bg-slate-300 mx-1"></div>
+                <div class="relative w-full sm:w-64">
+                    <svg class="w-4 h-4 text-slate-400 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    <input type="text" id="searchInput" onkeyup="filterTable()" placeholder="Tìm Tiêu đề, DOI, Tác giả..." class="w-full text-xs pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <!-- Custom Modern Styled Dropdown -->
+                <div class="relative" id="sourceDropdownContainer">
+                    <input type="hidden" id="sourceFilter" value="all">
+                    <button id="sourceDropdownBtn" type="button" onclick="toggleSourceDropdown(event)" class="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-700 font-medium flex items-center justify-between gap-2.5 transition-all shadow-xs cursor-pointer min-w-[155px]">
+                        <span class="flex items-center gap-2 truncate">
+                            <span id="sourceFilterDot" class="w-2 h-2 rounded-full bg-slate-400 shrink-0"></span>
+                            <span id="sourceFilterLabel">Tất cả Nguồn</span>
+                        </span>
+                        <svg id="sourceDropdownArrow" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </button>
+
+                    <!-- Dropdown Popover Menu -->
+                    <div id="sourceDropdownMenu" class="absolute right-0 top-full mt-1.5 w-52 bg-white rounded-xl border border-slate-200 shadow-xl shadow-slate-900/10 p-1.5 z-30 hidden opacity-0 translate-y-1 transition-all duration-150">
+                        <button type="button" onclick="selectSourceOption('all', 'Tất cả Nguồn', 'bg-slate-400')" class="w-full text-left px-2.5 py-2 text-xs font-semibold rounded-lg bg-blue-50/80 text-blue-700 flex items-center justify-between transition-colors cursor-pointer" data-val="all">
+                            <span class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                                <span>Tất cả Nguồn</span>
+                            </span>
+                            <svg class="check-icon w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+                        </button>
+                        <button type="button" onclick="selectSourceOption('oa', 'Open Access', 'bg-emerald-500')" class="w-full text-left px-2.5 py-2 text-xs font-medium rounded-lg text-slate-700 hover:bg-slate-50 hover:text-slate-900 flex items-center justify-between transition-colors cursor-pointer mt-0.5" data-val="oa">
+                            <span class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                <span>Open Access</span>
+                            </span>
+                            <svg class="check-icon w-3.5 h-3.5 text-blue-600 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+                        </button>
+                        <button type="button" onclick="selectSourceOption('vnu', 'VNU / Institutional', 'bg-indigo-500')" class="w-full text-left px-2.5 py-2 text-xs font-medium rounded-lg text-slate-700 hover:bg-slate-50 hover:text-slate-900 flex items-center justify-between transition-colors cursor-pointer mt-0.5" data-val="vnu">
+                            <span class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+                                <span>VNU / Institutional</span>
+                            </span>
+                            <svg class="check-icon w-3.5 h-3.5 text-blue-600 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <button onclick="loadPapers()" class="p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer" title="Làm mới danh sách">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="bg-white border border-slate-200 rounded-b-xl custom-shadow overflow-hidden mb-24">
+            <div class="overflow-x-auto min-h-[300px]">
+                <table class="w-full text-left text-sm text-slate-600 relative">
+                    <thead class="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wider text-slate-500 sticky top-0 z-10">
+                        <tr>
+                            <th class="p-4 w-12 text-center">
+                                <input type="checkbox" id="checkAllHeader" onclick="toggleHeaderCheck()" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
+                            </th>
+                            <th class="p-4 min-w-[320px]">Bài báo (Tiêu đề & DOI)</th>
+                            <th class="p-4 w-72 min-w-[240px]">File PDF</th>
+                            <th class="p-4 w-36 min-w-[130px] whitespace-nowrap">Nguồn</th>
+                            <th class="p-4 w-44 min-w-[150px] whitespace-nowrap">Trạng thái Dự án</th>
+                            <th class="p-4 w-28 min-w-[100px] text-right whitespace-nowrap">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="papersBody" class="divide-y divide-slate-100">
+                        <!-- Content loaded via JS -->
+                        <tr>
+                            <td colspan="5" class="p-8 text-center text-slate-400">
+                                <svg class="w-8 h-8 animate-spin mx-auto mb-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                Đang tải danh sách bài báo...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Empty State (Hidden by default) -->
+        <div id="emptyState" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center mt-20">
+            <div class="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+            </div>
+            <h3 class="text-lg font-bold text-slate-800">Kho bài báo trống</h3>
+            <p class="text-sm text-slate-500 mt-1 max-w-sm mx-auto">Bạn chưa tải thành công bài báo nào. Hãy quay lại trang "Thu thập & Tải bài" để tải PDF trước.</p>
+            <a href="/" onclick="switchTab(event, 'fetch')" class="mt-4 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-xl transition-all shadow-md shadow-blue-500/20">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                Trở về trang Tải bài
+            </a>
+        </div>
+
+        
+        </div>
+</main>
+
+        <!-- Footer -->
+        <footer class="w-full border-t border-slate-200/80 bg-white/50 py-4 mt-8">
+            <div class="w-full px-6 text-center text-xs text-slate-400">
+                SLR Paper Fetcher • Hỗ trợ Systematic Literature Review • ĐHQG-HCM
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const dropZone = document.getElementById('dropZone');
+        const fileNameDisplay = document.getElementById('fileNameDisplay');
+        const fileNameText = document.getElementById('fileNameText');
+        let currentResults = [];
+        let scanBusy = false;
+                const scanBadge = document.getElementById('scanRunningBadge');
+                if (scanBadge) scanBadge.classList.add('hidden');
+        let downloadBusy = false;
+        
+        const KNOWN_SOURCES = [
+            { id: 'Elsevier', name: 'Elsevier / ScienceDirect', color: 'bg-orange-50 text-orange-700 border-orange-200' },
+            { id: 'IEEE', name: 'IEEE Xplore', color: 'bg-sky-50 text-sky-700 border-sky-200' },
+            { id: 'Springer', name: 'SpringerLink / Nature', color: 'bg-amber-50 text-amber-700 border-amber-200' },
+            { id: 'Wiley', name: 'Wiley Online Library', color: 'bg-teal-50 text-teal-700 border-teal-200' },
+            { id: 'ACM', name: 'ACM Digital Library', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+            { id: 'MDPI', name: 'MDPI', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+            { id: 'arXiv', name: 'arXiv', color: 'bg-rose-50 text-rose-700 border-rose-200' },
+            { id: 'Oxford', name: 'Oxford University Press', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+            { id: 'Cambridge', name: 'Cambridge University Press', color: 'bg-violet-50 text-violet-700 border-violet-200' },
+            { id: 'IOP', name: 'IOP Publishing', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+            { id: 'AIP', name: 'AIP Publishing', color: 'bg-red-50 text-red-700 border-red-200' },
+            { id: 'Frontiers', name: 'Frontiers', color: 'bg-pink-50 text-pink-700 border-pink-200' },
+            { id: 'SSRN', name: 'SSRN', color: 'bg-yellow-50 text-yellow-700 border-yellow-200' }
+        ];
+
+        const DEFAULT_INTERESTED_SOURCES = ['Elsevier', 'IEEE', 'Springer', 'Wiley', 'ACM'];
+        let interestedSources = (() => {
+            try {
+                const saved = localStorage.getItem('slr_interested_sources');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                }
+            } catch (e) {}
+            return DEFAULT_INTERESTED_SOURCES;
+        })();
+        
+        let activeSourceFilter = 'all';
+
+        function getPaperProvider(res) {
+            if (res.provider && res.provider !== 'Generic') return res.provider;
+            const url = (res.resolved_url || res.oa_landing || res.vnu_link || res.oa_link || '').toLowerCase();
+            const doi = (res.doi || '').toLowerCase();
+            if (doi.startsWith('10.1016') || url.includes('sciencedirect.com') || url.includes('elsevier.com')) return 'Elsevier';
+            if (doi.startsWith('10.1109') || url.includes('ieee.org')) return 'IEEE';
+            if (doi.startsWith('10.1007') || doi.startsWith('10.1038') || url.includes('springer.com') || url.includes('nature.com')) return 'Springer';
+            if (doi.startsWith('10.1002') || doi.startsWith('10.1111') || url.includes('wiley.com')) return 'Wiley';
+            if (doi.startsWith('10.1145') || url.includes('acm.org')) return 'ACM';
+            if (doi.startsWith('10.3390') || url.includes('mdpi.com')) return 'MDPI';
+            if (doi.startsWith('10.48550') || doi.includes('arxiv') || url.includes('arxiv.org')) return 'arXiv';
+            if (doi.startsWith('10.1093') || url.includes('oup.com')) return 'Oxford';
+            if (doi.startsWith('10.1017') || url.includes('cambridge.org')) return 'Cambridge';
+            if (doi.startsWith('10.1088') || url.includes('iop.org')) return 'IOP';
+            if (doi.startsWith('10.1063') || url.includes('aip.org')) return 'AIP';
+            if (doi.startsWith('10.3389') || url.includes('frontiersin.org')) return 'Frontiers';
+            if (doi.startsWith('10.2139') || url.includes('ssrn.com')) return 'SSRN';
+            return 'Khác';
+        }
+
+        function isInterestedSource(res) {
+            return interestedSources.includes(getPaperProvider(res));
+        }
+
+        function renderSourcesModalCheckboxes() {
+            const list = document.getElementById('sourcesCheckboxList');
+            if (!list) return;
+            list.innerHTML = '';
+            KNOWN_SOURCES.forEach(source => {
+                const isChecked = interestedSources.includes(source.id);
+                const label = document.createElement('label');
+                label.className = 'flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-100 transition-colors';
+                label.innerHTML = `
+                    <div class="flex items-center gap-2.5">
+                        <input type="checkbox" value="${source.id}" ${isChecked ? 'checked' : ''} class="source-config-checkbox rounded text-blue-600 focus:ring-blue-500 w-4 h-4 border-slate-300">
+                        <span class="text-xs font-semibold text-slate-700">${source.name}</span>
+                    </div>
+                    <span class="text-[10px] font-medium px-2 py-0.5 rounded-md border ${source.color}">${source.id}</span>
+                `;
+                list.appendChild(label);
+            });
+        }
+
+        function openConfigModal() {
+            renderSourcesModalCheckboxes();
+            const modal = document.getElementById('configSourcesModal');
+            const box = document.getElementById('configSourcesModalBox');
+            if (modal && box) {
+                modal.classList.remove('hidden');
+                requestAnimationFrame(() => {
+                    modal.classList.remove('opacity-0');
+                    box.classList.remove('scale-95');
+                    box.classList.add('scale-100');
+                });
+            }
+        }
+
+        function closeConfigModal() {
+            const modal = document.getElementById('configSourcesModal');
+            const box = document.getElementById('configSourcesModalBox');
+            if (modal && box) {
+                modal.classList.add('opacity-0');
+                box.classList.remove('scale-100');
+                box.classList.add('scale-95');
+                setTimeout(() => modal.classList.add('hidden'), 200);
+            }
+        }
+
+        function selectAllSources(check) {
+            document.querySelectorAll('.source-config-checkbox').forEach(cb => cb.checked = check);
+        }
+
+        function saveSourcesConfig() {
+            const checked = Array.from(document.querySelectorAll('.source-config-checkbox:checked')).map(cb => cb.value);
+            interestedSources = checked;
+            try { localStorage.setItem('slr_interested_sources', JSON.stringify(checked)); } catch (e) {}
+            closeConfigModal();
+            displayResults(currentResults);
+            showToast(`Đã lưu cấu hình: ${checked.length} nguồn quan tâm`, true);
+        }
+
+        function setSourceFilter(mode) {
+            activeSourceFilter = mode;
+            const tabAll = document.getElementById('tabFilterAll');
+            const tabInterested = document.getElementById('tabFilterInterested');
+            const tabOther = document.getElementById('tabFilterOther');
+            const activeCls = 'bg-white text-slate-800 shadow-sm';
+            const inactiveCls = 'text-slate-500 hover:text-slate-700';
+            if (tabAll) tabAll.className = `text-xs font-semibold px-2.5 py-1 rounded-md transition-all ${mode === 'all' ? activeCls : inactiveCls}`;
+            if (tabInterested) tabInterested.className = `text-xs font-semibold px-2.5 py-1 rounded-md transition-all ${mode === 'interested' ? activeCls : inactiveCls}`;
+            if (tabOther) tabOther.className = `text-xs font-semibold px-2.5 py-1 rounded-md transition-all ${mode === 'other' ? activeCls : inactiveCls}`;
+            displayResults(currentResults);
+        }
+
+        function toggleMobileSidebar() {
+            const sb = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            if (sb.classList.contains('-translate-x-full')) {
+                sb.classList.remove('-translate-x-full');
+                overlay.classList.remove('hidden');
+            } else {
+                sb.classList.add('-translate-x-full');
+                overlay.classList.add('hidden');
+            }
+        }
+
+        // Fetch downloaded count for the navbar badge
+        function updateNavBadge() {
+            fetch('/api/downloaded-papers').then(r => r.json()).then(data => {
+                const badge = document.getElementById('navDownloadedBadge');
+                if (badge) badge.textContent = data.total || 0;
+            }).catch(() => {});
+        }
+        document.addEventListener('DOMContentLoaded', updateNavBadge);
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                fileNameText.textContent = fileInput.files[0].name;
+                fileNameDisplay.classList.remove('hidden');
+            }
+        });
+
+        // Drag & Drop
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-blue-500', 'bg-blue-50/20');
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('border-blue-500', 'bg-blue-50/20');
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-blue-500', 'bg-blue-50/20');
+            if (e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files;
+                fileNameText.textContent = e.dataTransfer.files[0].name;
+                fileNameDisplay.classList.remove('hidden');
+            }
+        });
+
+        async function processInput(type) {
+            if (scanBusy || downloadBusy) return;
+            const formData = new FormData();
+            if (type === 'text') {
+                const dois = document.getElementById('doiInput').value;
+                if (!dois.trim()) return alert('Vui lòng nhập ít nhất một DOI.');
+                formData.append('dois', dois);
+            } else {
+                if (!fileInput.files.length) return alert('Vui lòng chọn file Excel hoặc CSV.');
+                formData.append('file', fileInput.files[0]);
+            }
+
+            scanBusy = true;
+            const scanBadge = document.getElementById('scanRunningBadge');
+            if (scanBadge) scanBadge.classList.remove('hidden');
+            document.getElementById('btnText').disabled = true;
+            document.getElementById('btnFile').disabled = true;
+            const loading = document.getElementById('loadingIndicator');
+            const progressText = document.getElementById('scanProgressText');
+            const progressPercent = document.getElementById('scanProgressPercent');
+            const progressBar = document.getElementById('scanProgressBar');
+            loading.classList.remove('hidden');
+            document.getElementById('resultsSection').classList.add('hidden');
+            progressText.textContent = 'Đang gửi danh sách DOI...';
+            progressPercent.textContent = '0%';
+            progressBar.style.width = '0%';
+
+            try {
+                const response = await fetch('/api/process', { method: 'POST', body: formData });
+                if (!response.ok) throw new Error('Máy chủ trả về lỗi.');
+                const contentType = response.headers.get('content-type') || '';
+                if (!contentType.includes('application/x-ndjson')) {
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.error);
+                    currentResults = data.results || [];
+                    displayResults(currentResults);
+                    loading.classList.add('hidden');
+                    return;
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let finalResults = null;
+                while (true) {
+                    const { value, done } = await reader.read();
+                    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        const event = JSON.parse(line);
+                        if (event.type === 'start') {
+                            progressText.textContent = `Đang quét DOI: 0/${event.total} (tối đa ${event.concurrency} DOI song song)`;
+                        } else if (event.type === 'progress') {
+                            const percent = Math.round(event.completed / event.total * 100);
+                            progressText.textContent = `Đang quét DOI: ${event.completed}/${event.total}`;
+                            progressPercent.textContent = `${percent}%`;
+                            progressBar.style.width = `${percent}%`;
+                        } else if (event.type === 'done') {
+                            finalResults = event.results;
+                        } else if (event.error) {
+                            throw new Error(event.error);
+                        }
+                    }
+                    if (done) break;
+                }
+                if (buffer.trim()) {
+                    const event = JSON.parse(buffer);
+                    if (event.type === 'done') finalResults = event.results;
+                }
+                if (!finalResults) throw new Error('Máy chủ kết thúc trước khi gửi đủ kết quả.');
+                currentResults = finalResults;
+                progressText.textContent = `Đã quét xong ${finalResults.length} DOI`;
+                progressPercent.textContent = '100%';
+                progressBar.style.width = '100%';
+                displayResults(finalResults);
+                loading.classList.add('hidden');
+            } catch (e) {
+                loading.classList.add('hidden');
+                alert(e.message || 'Connection error');
+            } finally {
+                scanBusy = false;
+                const scanBadge = document.getElementById('scanRunningBadge');
+                if (scanBadge) scanBadge.classList.add('hidden');
+                document.getElementById('btnText').disabled = false;
+                document.getElementById('btnFile').disabled = false;
+            }
+        }
+
+        function safeWebUrl(value) {
+            try {
+                const url = new URL(value);
+                return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+            } catch { return ''; }
+        }
+
+        function element(tag, text, className = '') {
+            const node = document.createElement(tag);
+            node.textContent = text || '';
+            node.className = className;
+            return node;
+        }
+
+        function stateLabel(state) {
+            return ({PENDING: 'Chờ tải', PROCESSING: 'Đang xử lý', OPEN_ACCESS: 'Có nguồn Open Access',
+                LOGIN_REQUIRED: 'Cần đăng nhập VNU', AUTHENTICATED: 'Đã đăng nhập', SESSION_EXPIRED: 'Phiên đã hết hạn',
+                INSTITUTION_ACCESS: 'Có quyền toàn văn', NO_ACCESS: 'Chưa có quyền toàn văn', MFA_REQUIRED: 'Cần xác minh MFA',
+                CAPTCHA_REQUIRED: 'Cần xác minh trong trình duyệt', INVALID_DOI: 'DOI không hợp lệ', INVALID_PDF: 'PDF thiếu hoặc không hợp lệ',
+                RESOLUTION_FAILED: 'Chưa resolve được DOI', DOWNLOADED: 'Đã tải', FAILED: 'Chưa tải được', CANCELLED: 'Đã gián đoạn'})[state] || state;
+        }
+
+        function displayResults(results) {
+            currentResults = results || [];
+            const tbody = document.getElementById('resultsBody');
+            if (!tbody) return;
+            tbody.replaceChildren();
+            
+            const totalCount = currentResults.length;
+            const interestedCount = currentResults.filter(r => isInterestedSource(r)).length;
+            const otherCount = totalCount - interestedCount;
+
+            const countAllEl = document.getElementById('countAll');
+            if (countAllEl) countAllEl.textContent = totalCount;
+            const countInterestedEl = document.getElementById('countInterested');
+            if (countInterestedEl) countInterestedEl.textContent = interestedCount;
+            const countOtherEl = document.getElementById('countOther');
+            if (countOtherEl) countOtherEl.textContent = otherCount;
+
+            let visibleItems = currentResults.map((item, index) => ({ item, originalIndex: index }));
+            if (activeSourceFilter === 'interested') {
+                visibleItems = visibleItems.filter(({ item }) => isInterestedSource(item));
+            } else if (activeSourceFilter === 'other') {
+                visibleItems = visibleItems.filter(({ item }) => !isInterestedSource(item));
+            }
+
+            if (visibleItems.length === 0) {
+                const emptyTr = document.createElement('tr');
+                const emptyTd = document.createElement('td');
+                emptyTd.colSpan = 4;
+                emptyTd.className = 'p-8 text-center text-slate-400 text-xs';
+                if (activeSourceFilter === 'interested') {
+                    emptyTd.innerHTML = `
+                        <div class="py-4">
+                            <p class="font-medium text-slate-600 mb-1">Không có bài báo nào thuộc các nguồn quan tâm hiện tại.</p>
+                            <p class="text-slate-400">Bạn có thể bấm <button type="button" onclick="openConfigModal()" class="text-blue-600 hover:underline font-semibold transition-colors">⚙️ Cấu hình nguồn</button> để thêm nhà xuất bản bạn quan tâm.</p>
+                        </div>
+                    `;
+                } else if (activeSourceFilter === 'other') {
+                    emptyTd.textContent = 'Tất cả các bài báo đều thuộc nguồn bạn quan tâm!';
+                } else {
+                    emptyTd.textContent = 'Chưa có kết quả tra cứu.';
+                }
+                emptyTr.appendChild(emptyTd);
+                tbody.appendChild(emptyTr);
+            } else {
+                visibleItems.forEach(({ item: res, originalIndex: index }) => {
+                    const tr = element('tr', '', 'hover:bg-slate-50/70 transition-colors');
+                    const name = element('td', res.custom_name, 'p-4 align-top font-mono text-xs break-all text-slate-700');
+                    const info = element('td', '', 'p-4 align-top');
+                    
+                    const provider = getPaperProvider(res);
+                    const isFav = isInterestedSource(res);
+                    const srcInfo = KNOWN_SOURCES.find(s => s.id === provider);
+                    const badgeColor = srcInfo ? srcInfo.color : 'bg-slate-100 text-slate-600 border-slate-200';
+                    
+                    const badgeSpan = element('span', '', `inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md border ${badgeColor}`);
+                    if (isFav) {
+                        const star = element('span', '⭐');
+                        star.title = 'Nguồn quan tâm';
+                        badgeSpan.appendChild(star);
+                    }
+                    badgeSpan.appendChild(document.createTextNode(provider));
+                    
+                    const badgeWrapper = element('div', '', 'mt-2');
+                    badgeWrapper.appendChild(badgeSpan);
+
+                    info.append(
+                        element('div', res.title || res.doi || res.original, 'font-medium text-slate-800 leading-snug'),
+                        element('div', [res.authors, res.journal, res.year].filter(Boolean).join(' | '), 'text-xs text-slate-500 mt-1'),
+                        element('div', res.doi || res.original, 'text-xs text-slate-400 font-mono mt-0.5'),
+                        badgeWrapper
+                    );
+                        
+                    const code = res.already_exists ? 'DOWNLOADED' : res.state || res.status;
+                    const state = element('td', stateLabel(code), 'p-4 align-top text-xs whitespace-nowrap');
+                    state.dataset.state = code;
+                    state.id = `state-cell-${index}`;
+                    state.title = res.message || '';
+                    const actions = element('td', '', 'p-4 align-top text-right whitespace-nowrap');
+                    const cell = element('div', '', 'inline-block mr-2 text-xs');
+                    cell.id = `action-cell-${index}`;
+                    if (res.doi) {
+                        const download = element('button', res.already_exists ? 'Đã tải' : 'Tải tự động', 'bg-blue-600 text-white px-3 py-2 rounded-lg font-medium shadow-sm hover:bg-blue-700 transition-colors');
+                        download.onclick = res.already_exists ? openFolder : () => downloadAllOA([index]);
+                        cell.append(download);
+                    }
+                    const url = safeWebUrl(res.resolved_url || res.oa_landing || res.vnu_link || res.oa_link);
+                    if (url) {
+                        const link = element('a', 'Mở trang bài báo', 'ml-2 text-blue-700 hover:underline font-medium');
+                        link.href = url;
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                        cell.append(link);
+                    }
+                    const ris = element('button', 'RIS', 'bg-violet-50 hover:bg-violet-100 text-violet-700 px-3 py-2 rounded-lg text-xs font-medium transition-colors');
+                    ris.id = `ris-btn-${index}`;
+                    ris.onclick = () => exportSingleRIS(index);
+                    actions.append(cell, ris);
+                    tr.append(name, info, state, actions);
+                    tbody.append(tr);
+                });
+            }
+            const resultsSection = document.getElementById('resultsSection');
+            if (resultsSection) resultsSection.classList.remove('hidden');
+        }
+
+        async function restoreSavedResults() {
+            if (scanBusy || downloadBusy) return;
+            const response = await fetch('/api/papers');
+            if (!response.ok) return showToast('Cannot restore saved list', false);
+            const data = await response.json();
+            if (scanBusy || downloadBusy) return;
+            currentResults = data.papers.filter(paper => paper.doi.startsWith('10.')).map(paper => {
+                let metadata = {};
+                try { metadata = JSON.parse(paper.metadata); } catch {}
+                return {doi: paper.doi, title: metadata.title || paper.doi,
+                    custom_name: paper.filename || paper.doi.replace(/[^a-z0-9]/g, '_') + '.pdf',
+                    already_exists: paper.status === 'DOWNLOADED', state: paper.status, status: paper.status,
+                    resolved_url: paper.resolved_url, message: paper.message,
+                    provider: paper.provider || metadata.provider || metadata.publisher || ''};
+            });
+            displayResults(currentResults);
+        }
+
+        async function downloadAllOA(selectedIndexes = null) {
+            if (scanBusy || downloadBusy) return;
+            let candidateList = currentResults.map((item, index) => ({ item, index }));
+            if (!Array.isArray(selectedIndexes)) {
+                if (activeSourceFilter === 'interested') {
+                    candidateList = candidateList.filter(({ item }) => isInterestedSource(item));
+                } else if (activeSourceFilter === 'other') {
+                    candidateList = candidateList.filter(({ item }) => !isInterestedSource(item));
+                }
+            } else {
+                candidateList = candidateList.filter(({ index }) => selectedIndexes.includes(index));
+            }
+            
+            const itemsToDownload = candidateList.filter(({ item }) => !item.already_exists && item.doi && item.doi.startsWith('10.'));
+            if (!itemsToDownload.length) {
+                return alert('Đã có sẵn tất cả file hợp lệ hoặc không có DOI để tải trong danh mục này.');
+            }
+
+            downloadBusy = true;
+            const btn = document.getElementById('btnDownloadAll');
+            btn.className = 'text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm opacity-90';
+            btn.disabled = true;
+            btn.innerHTML = `<svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Đang chuẩn bị tải ${itemsToDownload.length} file...</span>`;
+            let successCount = 0;
+            let failCount = 0;
+            let processedCount = 0;
+            let oaDone = 0;
+            let oaTotal = 0;
+            let vnuDone = 0;
+            let vnuTotal = 0;
+            const finishedDownloadIndexes = new Set();
+            const itemProgressLanes = new Map();
+            const itemDownloadStatuses = new Map();
+            const updateDownloadProgress = (completed, total) => {
+                btn.innerHTML = `<span>\u0110\u00e3 x\u1eed l\u00fd ${completed}/${total} | OA ${oaDone}/${oaTotal} | VNU ${vnuDone}/${vnuTotal} | t\u1ea3i ${successCount} | l\u1ed7i ${failCount}</span>`;
+            };
+            const updateItemDownloadProgress = (index, lane, percent, received, size, status) => {
+                const cell = document.getElementById(`action-cell-${index}`);
+                if (!cell) return;
+                const value = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : null;
+                if (status) itemDownloadStatuses.set(index, status);
+                status = status || itemDownloadStatuses.get(index);
+                const laneName = lane === 'oa' ? 'OA' : status === 'checking_vnu' ? 'VNU' : 'Tự động';
+                let detail = '';
+                if (lane === 'oa' && received) {
+                    const receivedMb = (received / 1048576).toFixed(1);
+                    const totalMb = size ? ` / ${(size / 1048576).toFixed(1)} MB` : ' MB';
+                    detail = ` <span class="text-slate-400">${receivedMb}${totalMb}</span>`;
+                }
+                const width = value === null ? 25 : value;
+                const percentLabel = value === null ? '--%' : `${value}%`;
+                let stage = '\u0111ang t\u1ea3i';
+                if (lane === 'vnu') {
+                    if (value === 100) stage = '\u0111\u00e3 l\u01b0u, \u0111ang ho\u00e0n t\u1ea5t';
+                    else if (value >= 90) stage = '\u0111ang l\u01b0u file';
+                    else if (value >= 80) stage = '\u0111ang ch\u1edd PDF';
+                    else if (value >= 70) stage = '\u0111ang t\u00ecm PDF';
+                    else if (value >= 55) stage = '\u0111ang m\u1edf b\u00e0i b\u00e1o';
+                    else stage = '\u0111ang x\u00e1c th\u1ef1c VNU';
+                } else if (value === 100) {
+                    stage = '\u0111\u00e3 t\u1ea3i, \u0111ang ho\u00e0n t\u1ea5t';
+                }
+                if (status === 'waiting_for_verification') stage = 'chờ bạn xác minh trong trình duyệt';
+                else if (status === 'verification_complete') stage = 'đã xác minh, đang tiếp tục';
+                else if (status === 'checking_public_sources') stage = 'đang tìm bản toàn văn công khai';
+                else if (status === 'checking_arxiv') stage = 'đang tìm bản arXiv';
+                else if (status === 'switching_source') stage = 'gặp xác minh, tự chuyển nguồn';
+                else if (status === 'checking_vnu') stage = 'đang truy cập VNU';
+                else if (status === 'waiting_for_mfa') stage = 'chờ bạn xác minh MFA trong trình duyệt';
+                else if (status === 'login_required') stage = 'đang đăng nhập VNU';
+                else if (status === 'authenticated') stage = 'đã đăng nhập VNU';
+                else if (status === 'institution_access') stage = 'đã thấy quyền toàn văn';
+                else if (status === 'public_fallback_started') stage = 'đang tìm nguồn công khai thay thế';
+                else if (status === 'publisher_cooldown') stage = 'tạm nghỉ truy cập nhà xuất bản';
+                else if (status === 'reopening_browser') stage = 'đang mở lại phiên VNU';
+                if (value === 100) stage = 'đã lưu, đang hoàn tất';
+                cell.innerHTML = `<div class="w-40 text-left"><div class="flex justify-between text-[11px] mb-1"><span>${laneName} ${stage}${detail}</span><span>${percentLabel}</span></div><div class="h-1.5 rounded-full bg-slate-100 overflow-hidden"><div class="h-full bg-blue-600 rounded-full transition-all duration-200 ${value === null ? 'animate-pulse' : ''}" style="width:${width}%"></div></div></div>`;
+                if (status === 'waiting_for_verification') {
+                    const instruction = document.createElement('p');
+                    instruction.className = 'mt-2 max-w-xs text-xs text-amber-800 whitespace-normal';
+                    instruction.textContent = 'Tab xác minh đã mở trong cửa sổ trình duyệt của ứng dụng. Hãy hoàn tất CAPTCHA tại đó và giữ tab mở; ứng dụng sẽ tự tiếp tục.';
+                    const focusButton = element('button', 'Hiện tab xác minh', 'mt-2 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900');
+                    focusButton.type = 'button';
+                    focusButton.onclick = async () => {
+                        try {
+                            const response = await fetch('/api/focus-verification', { method: 'POST' });
+                            if (!response.ok) showToast('Tab xác minh không còn mở.', false);
+                        } catch {
+                            showToast('Không thể đưa tab xác minh ra trước.', false);
+                        }
+                    };
+                    cell.append(instruction, focusButton);
+                }
+            };
+
+            try {
+                const response = await fetch('/api/download-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        items: itemsToDownload.map(({ item }) => ({
+                            doi: item.doi,
+                            filename: item.custom_name,
+                            title: item.title || '',
+                            oa_link: item.oa_link || null
+                        }))
+                    })
+                });
+                const contentType = response.headers.get('content-type') || '';
+                if (!response.ok || !contentType.includes('application/x-ndjson')) {
+                    const error = contentType.includes('json') ? await response.json() : {};
+                    throw new Error(error.error || '\u0110\u00e3 kh\u00f4ng th\u1ec3 b\u1eaft \u0111\u1ea7u t\u1ea3i xu\u1ed1ng.');
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let streamFinished = false;
+                while (true) {
+                    const { value, done } = await reader.read();
+                    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        const event = JSON.parse(line);
+                        if (event.type === 'done') streamFinished = true;
+                        if (event.type === 'start') {
+                            oaTotal = event.oa_total;
+                            vnuTotal = event.vnu_total;
+                            updateDownloadProgress(0, event.total);
+                        } else if (event.type === 'item_progress') {
+                            if (!finishedDownloadIndexes.has(event.index)) {
+                                const activeLane = itemProgressLanes.get(event.index);
+                                if (!(event.lane === 'oa' && activeLane === 'vnu') || event.status === 'public_fallback_started') {
+                                    itemProgressLanes.set(event.index, event.lane);
+                                    updateItemDownloadProgress(itemsToDownload[event.index].index, event.lane, event.percent, event.received, event.size, event.status);
+                                }
+                            }
+                        } else if (event.type === 'lane_add') {
+                            oaTotal = event.oa_total;
+                            vnuTotal = event.vnu_total;
+                            oaDone = event.oa_done;
+                            vnuDone = event.vnu_done;
+                            updateDownloadProgress(processedCount, itemsToDownload.length);
+                        } else if (event.type === 'lane_done') {
+                            oaTotal = event.oa_total;
+                            oaDone = event.oa_done;
+                            vnuDone = event.vnu_done;
+                            vnuTotal = event.vnu_total;
+                            updateDownloadProgress(processedCount, itemsToDownload.length);
+                        } else if (event.type === 'progress') {
+                            const { index } = itemsToDownload[event.index];
+                            finishedDownloadIndexes.add(event.index);
+                            const result = event.result;
+                            const cell = document.getElementById(`action-cell-${index}`);
+                            if (cell) {
+                                if (result.success) {
+                                    successCount++;
+                                    currentResults[index].already_exists = true;
+                                    currentResults[index].custom_name = result.filename;
+                                    document.getElementById(`state-cell-${index}`).textContent = stateLabel('DOWNLOADED');
+                                    document.getElementById(`state-cell-${index}`).dataset.state = 'DOWNLOADED';
+                                    cell.textContent = '\u2713 \u0110\u00e3 t\u1ea3i t\u1ef1 \u0111\u1ed9ng';
+                                    cell.className = 'text-xs font-medium text-emerald-700';
+                                } else {
+                                    failCount++;
+                                    cell.textContent = `T\u1ea3i t\u1ef1 \u0111\u1ed9ng th\u1ea5t b\u1ea1i: ${result.message || 'Kh\u00f4ng r\u00f5 l\u00fd do'}`;
+                                    cell.replaceChildren();
+                                    cell.className = 'text-xs text-amber-700 whitespace-normal max-w-xs';
+                                    cell.title = result.message || '';
+                                    document.getElementById(`state-cell-${index}`).textContent = stateLabel(result.state || 'FAILED');
+                                    document.getElementById(`state-cell-${index}`).dataset.state = result.state || 'FAILED';
+                                    const status = document.createElement('span');
+                                    status.textContent = 'Chưa tải được tự động. ';
+                                    const retryRowBtn = element('button', 'Thử lại', 'inline-flex items-center gap-1 mr-2 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500 hover:bg-amber-600 text-white transition-all shadow-sm');
+                                    retryRowBtn.onclick = () => downloadAllOA([index]);
+                                    const openLink = document.createElement('a');
+                                    openLink.href = safeWebUrl(result.open_url || currentResults[index]?.vnu_link) || '#';
+                                    openLink.target = '_blank';
+                                    openLink.rel = 'noopener noreferrer';
+                                    openLink.textContent = 'Mở web';
+                                    openLink.className = 'font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-900';
+
+                                    cell.append(retryRowBtn, status, openLink);
+                                }
+                            } else if (result.success) {
+                                successCount++;
+                                currentResults[index].already_exists = true;
+                            } else {
+                                failCount++;
+                            }
+                            processedCount = event.completed;
+                            oaDone = event.oa_done;
+                            oaTotal = event.oa_total;
+                            vnuDone = event.vnu_done;
+                            vnuTotal = event.vnu_total;
+                            updateDownloadProgress(processedCount, event.total);
+                        }
+                    }
+                    if (done) break;
+                }
+                if (buffer.trim()) {
+                    const lastEvent = JSON.parse(buffer);
+                    if (lastEvent.type === 'done') streamFinished = true;
+                }
+                if (!streamFinished || processedCount !== itemsToDownload.length) throw new Error('Kết nối bị ngắt; khôi phục danh sách để xem các bài đã hoàn tất');
+                downloadBusy = false;
+                const remainingFails = currentResults.filter(item => !item.already_exists && item.doi && item.doi.startsWith('10.')).length;
+                if (remainingFails > 0) {
+                    btn.className = 'text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-md cursor-pointer ring-2 ring-amber-400/50';
+                    btn.disabled = false;
+                    btn.title = 'Bấm để thử tải lại tất cả bài chưa tải được';
+                    btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg><span>Thử lại ${remainingFails} bài lỗi (${successCount} thành công)</span>`;
+                } else {
+                    btn.className = 'text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm';
+                    btn.disabled = false;
+                    btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span>Đã tải thành công tất cả (${successCount} bài)</span>`;
+                    setTimeout(() => {
+                        if (!downloadBusy) {
+                            btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg><span>Tải tự động tất cả (OA + VNU)</span>`;
+                        }
+                    }, 4000);
+                }
+            } catch (error) {
+                downloadBusy = false;
+                btn.className = 'text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-md cursor-pointer';
+                btn.disabled = false;
+                btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg><span>Lỗi: ${error.message} (Bấm thử lại)</span>`;
+            }
+        }
+
+        async function openFolder() {
+            try {
+                await fetch('/api/open-folder');
+            } catch (e) {
+                alert('Không thể mở thư mục trên máy tính.');
+            }
+        }
+
+        function clearResults() {
+            if (scanBusy || downloadBusy) return;
+            currentResults = [];
+            document.getElementById('resultsBody').innerHTML = '';
+            document.getElementById('resultsSection').classList.add('hidden');
+        }
+
+        function showToast(msg, isSuccess = true) {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toastMsg');
+            const toastIcon = document.getElementById('toastIcon');
+            if (!toast) return;
+
+            toastMsg.textContent = msg;
+            if (isSuccess) {
+                toastIcon.className = "w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold";
+                toastIcon.textContent = "✓";
+            } else {
+                toastIcon.className = "w-5 h-5 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center font-bold";
+                toastIcon.textContent = "!";
+            }
+
+            toast.classList.remove('translate-y-20', 'opacity-0', 'pointer-events-none');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-20', 'opacity-0', 'pointer-events-none');
+            }, 4000);
+        }
+
+        function triggerDownloadBlob(text, filename, mimeType) {
+            const blob = new Blob([text], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 200);
+        }
+
+        async function exportAllRIS() {
+            if (!currentResults || currentResults.length === 0) {
+                alert('Không có bài báo nào trong bảng để xuất RIS.');
+                return;
+            }
+
+            let exportItems = currentResults;
+            if (activeSourceFilter === 'interested') {
+                exportItems = currentResults.filter(item => isInterestedSource(item));
+            } else if (activeSourceFilter === 'other') {
+                exportItems = currentResults.filter(item => !isInterestedSource(item));
+            }
+
+            if (!exportItems.length) {
+                alert('Không có bài báo nào thuộc danh mục này để xuất RIS.');
+                return;
+            }
+
+            const btn = document.getElementById('btnExportRIS');
+            const originalContent = btn.innerHTML;
+            btn.innerHTML = `<svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Đang xuất RIS...</span>`;
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/api/export-ris', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        items: exportItems,
+                        filename: 'slr_citations.ris'
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success && data.content) {
+                    triggerDownloadBlob(data.content, data.filename || 'slr_citations.ris', 'application/x-research-info-systems;charset=utf-8');
+                    showToast(`✓ Đã tải file RIS thành công (${data.count} bài báo) & lưu vào project!`, true);
+                } else {
+                    alert(data.error || 'Có lỗi khi xuất file RIS.');
+                }
+            } catch (e) {
+                alert('Lỗi kết nối khi xuất RIS: ' + e.message);
+            } finally {
+                btn.innerHTML = originalContent;
+                btn.disabled = false;
+            }
+        }
+
+        async function exportSingleRIS(index) {
+            const item = currentResults[index];
+            if (!item) return;
+
+            const btn = document.getElementById(`ris-btn-${index}`);
+            let oldHtml = '';
+            if (btn) {
+                oldHtml = btn.innerHTML;
+                btn.innerHTML = `<span class="pulse-loading text-[10px]">Đang lấy...</span>`;
+                btn.disabled = true;
+            }
+
+            try {
+                const safeName = (item.doi ? item.doi.replace(/[^a-zA-Z0-9]/g, '_') : `paper_${index + 1}`) + '.ris';
+                const response = await fetch('/api/export-ris', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        items: [item],
+                        filename: safeName
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success && data.content) {
+                    triggerDownloadBlob(data.content, data.filename, 'application/x-research-info-systems;charset=utf-8');
+                    showToast(`✓ Đã tải file trích dẫn RIS cho bài báo!`, true);
+                } else {
+                    alert(data.error || 'Có lỗi khi xuất RIS bài báo này.');
+                }
+            } catch (e) {
+                alert('Lỗi khi tải RIS: ' + e.message);
+            } finally {
+                if (btn) {
+                    btn.innerHTML = oldHtml;
+                    btn.disabled = false;
+                }
+            }
+        }
+    
+
+        // --- UPLOAD VIEW JS ---
+
+        let allPapers = [];
+        let selectedDois = new Set();
+
+        async function loadPapers() {
+            document.getElementById('papersBody').innerHTML = `<tr><td colspan="5" class="p-8 text-center text-slate-400"><svg class="w-8 h-8 animate-spin mx-auto mb-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Đang tải dữ liệu...</td></tr>`;
+            try {
+                const res = await fetch('/api/downloaded-papers');
+                const data = await res.json();
+                allPapers = data.papers || [];
+                
+                // Update Badge in Nav
+                const badge = document.getElementById('navDownloadedBadge');
+                if (badge) badge.textContent = allPapers.length;
+
+                document.getElementById('metricTotal').textContent = allPapers.length;
+                
+                if (allPapers.length === 0) {
+                    document.getElementById('emptyState').classList.remove('hidden');
+                    document.getElementById('papersBody').innerHTML = '';
+                } else {
+                    document.getElementById('emptyState').classList.add('hidden');
+                    filterTable();
+                }
+            } catch (error) {
+                console.error('Error loading papers', error);
+                document.getElementById('papersBody').innerHTML = `<tr><td colspan="5" class="p-8 text-center text-red-500">Lỗi kết nối khi tải danh sách.</td></tr>`;
+            }
+        }
+
+        function filterTable() {
+            const query = (document.getElementById('searchInput').value || '').toLowerCase();
+            const source = document.getElementById('sourceFilter').value;
+            
+            const filtered = allPapers.filter(p => {
+                const qMatch = p.title.toLowerCase().includes(query) || 
+                               p.doi.toLowerCase().includes(query) || 
+                               p.filename.toLowerCase().includes(query) ||
+                               p.authors.toLowerCase().includes(query);
+                
+                let sMatch = true;
+                if (source === 'oa') sMatch = p.source === 'oa' || p.source === 'public_copy' || p.provider === 'Generic';
+                else if (source === 'vnu') sMatch = p.source === 'vnu' || p.provider === 'Elsevier' || p.provider === 'IEEE';
+                
+                return qMatch && sMatch;
+            });
+            renderTable(filtered);
+        }
+
+        function renderTable(papers) {
+            const tbody = document.getElementById('papersBody');
+            tbody.innerHTML = '';
+            if (papers.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-500">Không tìm thấy bài báo nào khớp với bộ lọc.</td></tr>`;
+                return;
+            }
+
+            papers.forEach((p, idx) => {
+                const isSelected = selectedDois.has(p.doi);
+                const tr = document.createElement('tr');
+                tr.className = `transition-colors cursor-pointer border-b border-slate-50 ${isSelected ? 'row-selected border-blue-100' : 'hover:bg-slate-50'}`;
+                tr.onclick = (e) => {
+                    if(e.target.tagName === 'BUTTON' || e.target.tagName === 'A' || e.target.closest('button') || e.target.closest('a')) return;
+                    toggleSelection(p.doi);
+                };
+
+                const tdCheck = document.createElement('td');
+                tdCheck.className = "p-4 text-center";
+                tdCheck.innerHTML = `<input type="checkbox" value="${p.doi}" class="paper-checkbox w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelection('${p.doi}')">`;
+
+                const tdInfo = document.createElement('td');
+                tdInfo.className = "p-4 align-top";
+                tdInfo.innerHTML = `
+                    <div class="font-bold text-slate-800 line-clamp-2" title="${p.title}">${p.title}</div>
+                    <div class="text-xs text-slate-500 mt-1">${[p.authors, p.journal, p.year].filter(Boolean).join(' • ')}</div>
+                    <div class="flex items-center gap-2 mt-1.5">
+                        <span class="text-[11px] font-mono text-slate-400">${p.doi}</span>
+                        <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded ${p.provider==='Elsevier'?'bg-orange-100 text-orange-700': p.provider==='IEEE'?'bg-blue-100 text-blue-800': 'bg-slate-100 text-slate-600'}">${p.provider}</span>
+                    </div>
+                `;
+
+                const tdFile = document.createElement('td');
+                tdFile.className = "p-4 align-top break-all";
+                tdFile.innerHTML = `
+                    <div class="flex items-start gap-2">
+                        <svg class="w-5 h-5 text-red-500 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM15 15h-1.5v3H12v-3H9v-1.5h6V15z"/></svg>
+                        <div>
+                            <div class="text-xs font-semibold text-slate-700 line-clamp-1" title="${p.filename}">${p.filename}</div>
+                            <div class="text-[11px] text-slate-500 font-medium">${p.file_size_formatted}</div>
+                        </div>
+                    </div>
+                `;
+
+                const tdSource = document.createElement('td');
+                tdSource.className = "p-4 align-top";
+                const isOA = p.source === 'oa' || p.source === 'public_copy';
+                tdSource.innerHTML = `
+                    <span class="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-full ${isOA ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-indigo-50 text-indigo-700 border border-indigo-100'}">
+                        <span class="w-1.5 h-1.5 rounded-full ${isOA ? 'bg-emerald-500' : 'bg-indigo-500'}"></span>
+                        ${isOA ? 'Open Access' : 'VNU Proxy'}
+                    </span>
+                `;
+
+                const tdProjectStatus = document.createElement('td');
+                tdProjectStatus.className = "p-4 align-top";
+                if (p.last_uploaded_project) {
+                    tdProjectStatus.innerHTML = `
+                        <div class="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-lg text-xs font-semibold" title="Đã đẩy lên vào ${p.uploaded_at ? new Date(p.uploaded_at).toLocaleString() : ''}">
+                            <svg class="w-3.5 h-3.5 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+                            <span class="truncate max-w-[120px] font-mono">${p.last_uploaded_project}</span>
+                        </div>
+                    `;
+                } else {
+                    tdProjectStatus.innerHTML = `
+                        <span class="inline-flex items-center gap-1 text-[11px] text-slate-400 font-medium bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                            Chưa đẩy lên
+                        </span>
+                    `;
+                }
+
+                const tdAction = document.createElement('td');
+                tdAction.className = "p-4 align-top text-right whitespace-nowrap";
+                tdAction.innerHTML = `
+                    <a href="/api/download-file/${encodeURIComponent(p.filename)}" target="_blank" class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-blue-700 transition-colors tooltip" title="Xem PDF">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                    </a>
+                    <a href="${p.resolved_url || 'https://doi.org/'+p.doi}" target="_blank" class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-50 text-slate-600 hover:bg-slate-200 transition-colors ml-1" title="Mở trang web gốc">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                    </a>
+                `;
+
+                tr.append(tdCheck, tdInfo, tdFile, tdSource, tdProjectStatus, tdAction);
+                tbody.appendChild(tr);
+            });
+            updateMetrics();
+        }
+
+        function toggleSelection(doi) {
+            if (selectedDois.has(doi)) {
+                selectedDois.delete(doi);
+            } else {
+                selectedDois.add(doi);
+            }
+            filterTable(); // Re-render to update row styles and checks
+        }
+
+        function selectAll(forceCheck) {
+            const visiblePapers = getVisiblePapers();
+            if (forceCheck) {
+                visiblePapers.forEach(p => selectedDois.add(p.doi));
+            } else {
+                selectedDois.clear();
+            }
+            document.getElementById('checkAllHeader').checked = forceCheck;
+            filterTable();
+        }
+
+        function toggleHeaderCheck() {
+            const chk = document.getElementById('checkAllHeader');
+            selectAll(chk.checked);
+        }
+
+        function getVisiblePapers() {
+            // Re-apply filter logic to get currently visible
+            const query = (document.getElementById('searchInput').value || '').toLowerCase();
+            const source = document.getElementById('sourceFilter').value;
+            return allPapers.filter(p => {
+                const qMatch = p.title.toLowerCase().includes(query) || p.doi.toLowerCase().includes(query) || p.filename.toLowerCase().includes(query) || p.authors.toLowerCase().includes(query);
+                let sMatch = true;
+                if (source === 'oa') sMatch = p.source === 'oa' || p.source === 'public_copy' || p.provider === 'Generic';
+                else if (source === 'vnu') sMatch = p.source === 'vnu' || p.provider === 'Elsevier' || p.provider === 'IEEE';
+                return qMatch && sMatch;
+            });
+        }
+
+        // --- Custom Dropdown Logic ---
+        function toggleSourceDropdown(e) {
+            if (e) e.stopPropagation();
+            const menu = document.getElementById('sourceDropdownMenu');
+            const arrow = document.getElementById('sourceDropdownArrow');
+            const isHidden = menu.classList.contains('hidden');
+            if (isHidden) {
+                menu.classList.remove('hidden');
+                requestAnimationFrame(() => {
+                    menu.classList.remove('opacity-0', 'translate-y-1');
+                    if (arrow) arrow.classList.add('rotate-180');
+                });
+            } else {
+                menu.classList.add('opacity-0', 'translate-y-1');
+                if (arrow) arrow.classList.remove('rotate-180');
+                setTimeout(() => menu.classList.add('hidden'), 150);
+            }
+        }
+
+        function closeSourceDropdown() {
+            const menu = document.getElementById('sourceDropdownMenu');
+            const arrow = document.getElementById('sourceDropdownArrow');
+            if (menu && !menu.classList.contains('hidden')) {
+                menu.classList.add('opacity-0', 'translate-y-1');
+                if (arrow) arrow.classList.remove('rotate-180');
+                setTimeout(() => menu.classList.add('hidden'), 150);
+            }
+        }
+
+        function selectSourceOption(value, label, dotColorClass) {
+            document.getElementById('sourceFilter').value = value;
+            document.getElementById('sourceFilterLabel').textContent = label;
+            
+            const dot = document.getElementById('sourceFilterDot');
+            dot.className = `w-2 h-2 rounded-full ${dotColorClass} shrink-0`;
+
+            document.querySelectorAll('#sourceDropdownMenu [data-val]').forEach(item => {
+                const check = item.querySelector('.check-icon');
+                if (item.getAttribute('data-val') === value) {
+                    item.className = "w-full text-left px-2.5 py-2 text-xs font-semibold rounded-lg bg-blue-50/80 text-blue-700 flex items-center justify-between transition-colors cursor-pointer";
+                    if (check) check.classList.remove('hidden');
+                } else {
+                    item.className = "w-full text-left px-2.5 py-2 text-xs font-medium rounded-lg text-slate-700 hover:bg-slate-50 hover:text-slate-900 flex items-center justify-between transition-colors cursor-pointer mt-0.5";
+                    if (check) check.classList.add('hidden');
+                }
+            });
+
+            closeSourceDropdown();
+            filterTable();
+        }
+
+        document.addEventListener('click', (e) => {
+            const projectWrapper = document.getElementById('projectDropdownWrapper');
+            if (projectWrapper && !projectWrapper.contains(e.target)) {
+                closeProjectDropdown();
+            }
+            const container = document.getElementById('sourceDropdownContainer');
+            if (container && !container.contains(e.target)) {
+                closeSourceDropdown();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeProjectDropdown();
+                closeSourceDropdown();
+            }
+        });
+
+        function updateMetrics() {
+            let selectedSize = 0;
+            const selectedItems = allPapers.filter(p => selectedDois.has(p.doi));
+            selectedItems.forEach(p => selectedSize += p.file_size || 0);
+            
+            document.getElementById('metricSelected').textContent = selectedDois.size;
+            document.getElementById('metricSize').textContent = (selectedSize / (1024*1024)).toFixed(1) + ' MB';
+            
+            const bar = document.getElementById('uploadBar');
+            if (selectedDois.size > 0) {
+                bar.classList.remove('translate-y-full');
+                document.getElementById('barSelectedCount').textContent = selectedDois.size;
+                document.getElementById('barSelectedSize').textContent = (selectedSize / (1024*1024)).toFixed(1) + ' MB';
+            } else {
+                bar.classList.add('translate-y-full');
+            }
+        }
+
+        async function openFolder() {
+            fetch('/api/open-folder').catch(() => alert('Không thể mở thư mục.'));
+        }
+
+        // --- SLR SYSTEM INTEGRATION & REAL UPLOAD LOGIC ---
+        let slrProjects = [];
+        let selectedProjectId = '';
+        let slrConfig = { base_url: 'http://127.0.0.1:5000', has_api_key: false, default_project_id: '' };
+
+        async function initSlrIntegration() {
+            await fetchSlrConfig();
+            await loadSlrProjects();
+        }
+
+        async function fetchSlrConfig() {
+            try {
+                const res = await fetch('/api/slr/config');
+                const data = await res.json();
+                slrConfig = data;
+                if (data.default_project_id && !selectedProjectId) {
+                    selectedProjectId = data.default_project_id;
+                }
+            } catch (e) {
+                console.warn('Failed to load SLR config', e);
+            }
+        }
+
+        function toggleProjectDropdown() {
+            const menu = document.getElementById('projectDropdownMenu');
+            const chevron = document.getElementById('projectDropdownChevron');
+            if (!menu) return;
+            const isHidden = menu.classList.contains('hidden');
+            if (isHidden) {
+                menu.classList.remove('hidden');
+                if (chevron) chevron.classList.add('rotate-180');
+                const searchInput = document.getElementById('projectSearchInput');
+                if (searchInput) {
+                    searchInput.value = '';
+                    filterProjectDropdown();
+                    setTimeout(() => searchInput.focus(), 60);
+                }
+            } else {
+                closeProjectDropdown();
+            }
+        }
+
+        function closeProjectDropdown() {
+            const menu = document.getElementById('projectDropdownMenu');
+            const chevron = document.getElementById('projectDropdownChevron');
+            if (menu) menu.classList.add('hidden');
+            if (chevron) chevron.classList.remove('rotate-180');
+        }
+
+        function selectProjectItem(projId) {
+            closeProjectDropdown();
+            const manualContainer = document.getElementById('manualProjectContainer');
+            const hiddenSelect = document.getElementById('projectSelect');
+
+            if (projId === '__manual__') {
+                selectedProjectId = '__manual__';
+                if (hiddenSelect) hiddenSelect.value = '__manual__';
+                if (manualContainer) {
+                    manualContainer.classList.remove('hidden');
+                    const manualInput = document.getElementById('manualProjectId');
+                    if (manualInput) {
+                        manualInput.focus();
+                        selectedProjectId = (manualInput.value || '').trim();
+                    }
+                }
+                updateProjectDropdownTrigger('__manual__');
+            } else {
+                if (manualContainer) manualContainer.classList.add('hidden');
+                selectedProjectId = projId;
+                if (hiddenSelect) hiddenSelect.value = projId;
+                updateProjectDropdownTrigger(projId);
+            }
+            updateTargetProjectDisplay(selectedProjectId);
+            renderProjectsDropdownList();
+        }
+
+        function updateProjectDropdownTrigger(projId) {
+            const titleEl = document.getElementById('projectDropdownTitle');
+            const subEl = document.getElementById('projectDropdownSub');
+            const iconEl = document.getElementById('projectDropdownIcon');
+
+            if (!titleEl) return;
+
+            if (!projId) {
+                titleEl.textContent = '-- Chọn Dự Án Đích để đẩy bài --';
+                titleEl.className = 'font-semibold text-slate-300 text-xs truncate';
+                if (subEl) subEl.classList.add('hidden');
+                if (iconEl) iconEl.innerHTML = '🎯';
+                return;
+            }
+
+            if (projId === '__manual__') {
+                const manualVal = (document.getElementById('manualProjectId')?.value || '').trim();
+                titleEl.textContent = manualVal ? `✏️ Thủ công: ${manualVal}` : '✏️ Nhập Mã Dự Án thủ công...';
+                titleEl.className = 'font-semibold text-amber-300 text-xs truncate';
+                if (subEl) {
+                    subEl.textContent = 'Mã dự án do người dùng nhập tự do';
+                    subEl.classList.remove('hidden');
+                }
+                if (iconEl) iconEl.innerHTML = '✏️';
+                return;
+            }
+
+            const found = slrProjects.find(p => p.id === projId);
+            if (found) {
+                titleEl.textContent = found.name || found.id;
+                titleEl.className = 'font-semibold text-white text-xs truncate';
+                titleEl.title = found.name || found.id;
+                if (subEl) {
+                    const statusText = found.status ? `[${found.status}] • ` : '';
+                    subEl.textContent = `${statusText}ID: ${found.id}`;
+                    subEl.classList.remove('hidden');
+                }
+                if (iconEl) iconEl.innerHTML = '📁';
+            } else {
+                titleEl.textContent = projId;
+                titleEl.className = 'font-semibold text-white text-xs truncate';
+                if (subEl) {
+                    subEl.textContent = `ID: ${projId}`;
+                    subEl.classList.remove('hidden');
+                }
+                if (iconEl) iconEl.innerHTML = '📁';
+            }
+        }
+
+        function renderProjectsDropdownList(filteredProjects = null) {
+            const list = document.getElementById('projectDropdownList');
+            if (!list) return;
+
+            const projectsToRender = filteredProjects !== null ? filteredProjects : slrProjects;
+
+            if (!slrProjects || slrProjects.length === 0) {
+                list.innerHTML = `
+                    <div class="p-4 text-center text-xs text-slate-400">
+                        Chưa có dự án nào từ backend hoặc máy chủ chưa sẵn sàng.
+                    </div>
+                `;
+                return;
+            }
+
+            if (projectsToRender.length === 0) {
+                list.innerHTML = `
+                    <div class="p-4 text-center text-xs text-slate-400">
+                        Không tìm thấy dự án phù hợp với từ khóa tìm kiếm.
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '';
+            projectsToRender.forEach(proj => {
+                const isSelected = (selectedProjectId === proj.id);
+                const status = proj.status || '';
+                let statusBadge = '';
+                if (status) {
+                    let colorCls = 'bg-slate-700/60 text-slate-300 border-slate-600/50';
+                    if (status.includes('IDENTIFICATION')) colorCls = 'bg-indigo-500/20 text-indigo-300 border-indigo-400/40';
+                    else if (status.includes('SELECTION')) colorCls = 'bg-blue-500/20 text-blue-300 border-blue-400/40';
+                    else if (status.includes('EXTRACTION')) colorCls = 'bg-amber-500/20 text-amber-300 border-amber-400/40';
+                    else if (status.includes('QUALITY')) colorCls = 'bg-cyan-500/20 text-cyan-300 border-cyan-400/40';
+                    statusBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase border ${colorCls}">${status}</span>`;
+                }
+
+                const safeName = (proj.name || proj.id).replace(/"/g, '&quot;');
+
+                html += `
+                    <div onclick="selectProjectItem('${proj.id}')" 
+                         class="group p-2.5 rounded-xl border transition-all cursor-pointer flex items-start gap-3 ${isSelected ? 'bg-indigo-600/30 border-indigo-400/50 shadow-sm' : 'border-transparent hover:bg-white/10 hover:border-white/10'}">
+                        <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 text-sm ${isSelected ? 'bg-indigo-500 text-white shadow' : 'bg-white/10 text-indigo-300 group-hover:bg-indigo-500/20'}">
+                            📁
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-xs font-semibold text-white group-hover:text-indigo-200 leading-snug line-clamp-2" title="${safeName}">
+                                ${proj.name || proj.id}
+                            </div>
+                            <div class="flex items-center gap-2 mt-1.5 flex-wrap">
+                                ${statusBadge}
+                                <span class="text-[11px] font-mono text-slate-400 select-all" title="Mã dự án: ${proj.id}">
+                                    ID: <span class="text-slate-300">${proj.id}</span>
+                                </span>
+                            </div>
+                        </div>
+                        ${isSelected ? '<span class="text-emerald-400 font-bold text-sm shrink-0 mt-1">✓</span>' : ''}
+                    </div>
+                `;
+            });
+
+            list.innerHTML = html;
+        }
+
+        function filterProjectDropdown() {
+            const q = (document.getElementById('projectSearchInput')?.value || '').toLowerCase().trim();
+            if (!q) {
+                renderProjectsDropdownList(slrProjects);
+                return;
+            }
+            const filtered = slrProjects.filter(p => 
+                (p.name && p.name.toLowerCase().includes(q)) || 
+                (p.id && p.id.toLowerCase().includes(q)) ||
+                (p.status && p.status.toLowerCase().includes(q))
+            );
+            renderProjectsDropdownList(filtered);
+        }
+
+        async function loadSlrProjects() {
+            const titleEl = document.getElementById('projectDropdownTitle');
+            const badge = document.getElementById('slrConnBadge');
+            if (titleEl) {
+                titleEl.textContent = '⏳ Đang nạp danh sách dự án...';
+            }
+
+            try {
+                const res = await fetch('/api/slr/projects');
+                const data = await res.json();
+
+                if (data.success && Array.isArray(data.projects)) {
+                    slrProjects = data.projects;
+                    if (badge) {
+                        badge.classList.remove('hidden', 'bg-rose-500/20', 'text-rose-300', 'border-rose-400/30');
+                        badge.classList.add('bg-emerald-500/20', 'text-emerald-300', 'border-emerald-400/30');
+                        badge.innerHTML = `✓ Đã kết nối SLR (${slrProjects.length} dự án)`;
+                    }
+                    renderProjectsDropdown();
+                } else {
+                    if (badge) {
+                        badge.classList.remove('hidden', 'bg-emerald-500/20', 'text-emerald-300', 'border-emerald-400/30');
+                        badge.classList.add('bg-rose-500/20', 'text-rose-300', 'border-rose-400/30');
+                        badge.innerHTML = `✗ Chưa kết nối Backend`;
+                    }
+                    if (titleEl) {
+                        titleEl.textContent = '⚠️ Không tải được dự án (Bấm để thử lại)';
+                    }
+                    renderProjectsDropdownList();
+                }
+            } catch (e) {
+                if (badge) {
+                    badge.classList.remove('hidden');
+                    badge.innerHTML = `✗ Lỗi kết nối`;
+                }
+                if (titleEl) {
+                    titleEl.textContent = `⚠️ Mất kết nối backend (${slrConfig.base_url})`;
+                }
+                renderProjectsDropdownList();
+            }
+        }
+
+        function renderProjectsDropdown() {
+            renderProjectsDropdownList();
+            if (selectedProjectId) {
+                updateProjectDropdownTrigger(selectedProjectId);
+                updateTargetProjectDisplay(selectedProjectId);
+            } else if (slrProjects.length > 0) {
+                if (slrConfig.default_project_id && slrProjects.some(p => p.id === slrConfig.default_project_id)) {
+                    selectProjectItem(slrConfig.default_project_id);
+                } else {
+                    updateProjectDropdownTrigger('');
+                }
+            } else {
+                updateProjectDropdownTrigger('');
+            }
+        }
+
+        function onProjectSelectChange() {
+            const select = document.getElementById('projectSelect');
+            if (select) selectProjectItem(select.value);
+        }
+
+        function onManualProjectInput() {
+            const manualInput = document.getElementById('manualProjectId');
+            selectedProjectId = (manualInput.value || '').trim();
+            const hiddenSelect = document.getElementById('projectSelect');
+            if (hiddenSelect) hiddenSelect.value = selectedProjectId;
+            updateProjectDropdownTrigger('__manual__');
+            updateTargetProjectDisplay(selectedProjectId);
+        }
+
+        function updateTargetProjectDisplay(projId) {
+            const display = document.getElementById('barTargetProject');
+            if (!display) return;
+            if (projId) {
+                const found = slrProjects.find(p => p.id === projId);
+                const name = found ? found.name : projId;
+                display.textContent = `${name} (${projId})`;
+                display.className = "font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 text-xs truncate max-w-[280px]";
+                display.title = `${name} (${projId})`;
+            } else {
+                display.textContent = "Chưa chọn dự án";
+                display.className = "font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-xs";
+            }
+        }
+
+        function openSlrConfigModal() {
+            document.getElementById('cfgBaseUrl').value = slrConfig.base_url || 'http://127.0.0.1:5000';
+            document.getElementById('cfgApiKey').value = '';
+            document.getElementById('cfgDefaultProj').value = slrConfig.default_project_id || '';
+            document.getElementById('cfgApiKeyNote').textContent = slrConfig.has_api_key 
+                ? `Đã cấu hình khóa bảo mật bí mật (${slrConfig.api_key_masked || 'Đã kích hoạt'}). Nhập mới nếu muốn thay đổi.` 
+                : 'Chưa có API Key. Vui lòng nhập PUBLIC_UPLOAD_API_KEY.';
+            
+            const testResult = document.getElementById('testConnResult');
+            testResult.classList.add('hidden');
+
+            const modal = document.getElementById('slrConfigModal');
+            const content = document.getElementById('slrConfigModalContent');
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                content.classList.remove('scale-95');
+                content.classList.add('scale-100');
+            }, 10);
+        }
+
+        function closeSlrConfigModal() {
+            const modal = document.getElementById('slrConfigModal');
+            const content = document.getElementById('slrConfigModalContent');
+            modal.classList.add('opacity-0');
+            content.classList.remove('scale-100');
+            content.classList.add('scale-95');
+            setTimeout(() => modal.classList.add('hidden'), 200);
+        }
+
+        async function testSlrConnection() {
+            const btn = document.getElementById('btnTestConn');
+            const resultBox = document.getElementById('testConnResult');
+            const orig = btn.innerHTML;
+            btn.innerHTML = `<span class="pulse-loading">Đang kiểm tra...</span>`;
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/slr/projects');
+                const data = await res.json();
+                resultBox.classList.remove('hidden', 'bg-rose-50', 'text-rose-700', 'border-rose-200', 'bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
+
+                if (data.success) {
+                    resultBox.classList.add('bg-emerald-50', 'text-emerald-800', 'border-emerald-200');
+                    resultBox.innerHTML = `✓ Kết nối thành công! Tìm thấy <b>${data.projects.length}</b> dự án từ máy chủ SLR Backend.`;
+                } else {
+                    resultBox.classList.add('bg-rose-50', 'text-rose-800', 'border-rose-200');
+                    resultBox.innerHTML = `✗ Lỗi: ${data.error || 'Không thể xác thực API Key'}`;
+                }
+            } catch (e) {
+                resultBox.classList.remove('hidden');
+                resultBox.className = 'p-3 rounded-xl border text-xs bg-rose-50 text-rose-800 border-rose-200';
+                resultBox.innerHTML = `✗ Không thể kết nối tới server: ${e.message}`;
+            } finally {
+                btn.innerHTML = orig;
+                btn.disabled = false;
+            }
+        }
+
+        async function saveSlrConfig() {
+            const baseUrl = document.getElementById('cfgBaseUrl').value.trim();
+            const apiKey = document.getElementById('cfgApiKey').value.trim();
+            const defaultProj = document.getElementById('cfgDefaultProj').value.trim();
+
+            try {
+                const res = await fetch('/api/slr/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        base_url: baseUrl,
+                        api_key: apiKey,
+                        default_project_id: defaultProj
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast('✓ Đã lưu cấu hình kết nối SLR System thành công!', true);
+                    closeSlrConfigModal();
+                    await fetchSlrConfig();
+                    await loadSlrProjects();
+                } else {
+                    alert(data.error || 'Lỗi lưu cấu hình.');
+                }
+            } catch (e) {
+                alert('Lỗi lưu cấu hình: ' + e.message);
+            }
+        }
+
+        function previewPayload() {
+            const selectedItems = allPapers.filter(p => selectedDois.has(p.doi));
+            const projId = selectedProjectId || 'CHƯA_CHỌN_DỰ_ÁN';
+            const payload = {
+                target_system: `${slrConfig.base_url}/api/public/papers/upload-pdf`,
+                target_project_id: projId,
+                auth_header: "X-API-Key: [CONFIGURED]",
+                timestamp: new Date().toISOString(),
+                total_items: selectedItems.length,
+                papers: selectedItems.map(p => ({
+                    doi: p.doi,
+                    title: p.title,
+                    authors: p.authors,
+                    journal: p.journal,
+                    year: p.year,
+                    filename: p.filename,
+                    file_size_bytes: p.file_size,
+                    source: p.source,
+                    provider: p.provider,
+                    local_file_path: p.file_path
+                }))
+            };
+            document.getElementById('payloadJsonPre').textContent = JSON.stringify(payload, null, 2);
+            document.getElementById('payloadItemCount').textContent = `${selectedItems.length} bài báo được chọn (Dự án: ${projId})`;
+            
+            const modal = document.getElementById('payloadModal');
+            const content = document.getElementById('payloadModalContent');
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                content.classList.remove('scale-95');
+                content.classList.add('scale-100');
+            }, 10);
+        }
+
+        function closePayloadModal() {
+            const modal = document.getElementById('payloadModal');
+            const content = document.getElementById('payloadModalContent');
+            modal.classList.add('opacity-0');
+            content.classList.remove('scale-100');
+            content.classList.add('scale-95');
+            setTimeout(() => modal.classList.add('hidden'), 200);
+        }
+
+        function copyPayloadJson() {
+            const text = document.getElementById('payloadJsonPre').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = document.getElementById('btnCopyJson');
+                const orig = btn.innerHTML;
+                btn.innerHTML = `<span class="text-emerald-600 font-bold">✓ Đã sao chép!</span>`;
+                setTimeout(() => btn.innerHTML = orig, 2000);
+            });
+        }
+
+        async function startPushToProject() {
+            if (!selectedProjectId) {
+                alert('Vui lòng chọn hoặc nhập Dự Án Đích (Target Project) trước khi đẩy bài lên!');
+                const select = document.getElementById('projectSelect');
+                if (select) select.focus();
+                return;
+            }
+
+            const selectedItems = allPapers.filter(p => selectedDois.has(p.doi));
+            if (selectedItems.length === 0) {
+                alert('Vui lòng chọn ít nhất 1 bài báo để đẩy lên dự án.');
+                return;
+            }
+
+            const modal = document.getElementById('uploadModal');
+            const content = document.getElementById('uploadModalContent');
+            const feed = document.getElementById('uploadItemsFeed');
+            const btnClose = document.getElementById('btnCloseUploadModal');
+            const btnFinish = document.getElementById('btnFinishUpload');
+
+            document.getElementById('uploadTargetDisplay').textContent = selectedProjectId;
+            document.getElementById('uploadStatTotal').textContent = selectedItems.length;
+            document.getElementById('uploadStatSuccess').textContent = '0';
+            document.getElementById('uploadStatFail').textContent = '0';
+            document.getElementById('uploadProgressBar').style.width = '0%';
+            document.getElementById('uploadProgressPercent').textContent = '0%';
+            document.getElementById('uploadProgressStepText').textContent = `Đang kết nối tới SLR Backend...`;
+            feed.innerHTML = '';
+            btnClose.classList.add('hidden');
+            btnFinish.classList.add('hidden');
+
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                content.classList.remove('scale-95');
+                content.classList.add('scale-100');
+            }, 10);
+
+            // Create initial placeholder cards in feed
+            selectedItems.forEach((item, idx) => {
+                const div = document.createElement('div');
+                div.id = `feed-item-${idx}`;
+                div.className = "p-3 rounded-xl border border-slate-100 bg-slate-50 flex items-start justify-between gap-3 text-xs transition-all";
+                div.innerHTML = `
+                    <div class="flex items-start gap-2.5 min-w-0 flex-1">
+                        <span id="feed-icon-${idx}" class="mt-0.5 w-4 h-4 text-slate-400 shrink-0">⏳</span>
+                        <div class="min-w-0 flex-1">
+                            <p class="font-bold text-slate-800 truncate" title="${item.title}">${idx + 1}. ${item.title}</p>
+                            <p class="text-[11px] font-mono text-slate-400 truncate">${item.filename}</p>
+                            <p id="feed-status-${idx}" class="text-[11px] text-slate-400 mt-0.5">Đang chờ lượt...</p>
+                        </div>
+                    </div>
+                `;
+                feed.appendChild(div);
+            });
+
+            try {
+                const response = await fetch('/api/slr/push-papers', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        project_id: selectedProjectId,
+                        dois: selectedItems.map(p => p.doi)
+                    })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || `HTTP ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // keep remainder
+
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        try {
+                            const evt = JSON.parse(line);
+                            handleUploadStreamEvent(evt, selectedItems.length);
+                        } catch (err) {
+                            console.warn('NDJSON parse error', err);
+                        }
+                    }
+                }
+
+            } catch (err) {
+                document.getElementById('uploadProgressStepText').textContent = `Lỗi: ${err.message}`;
+                document.getElementById('uploadProgressStepText').className = "text-rose-600 font-bold";
+                btnClose.classList.remove('hidden');
+                btnFinish.classList.remove('hidden');
+                btnFinish.textContent = "Đóng";
+            }
+        }
+
+        function handleUploadStreamEvent(evt, totalCount) {
+            if (evt.type === 'start') {
+                document.getElementById('uploadProgressStepText').textContent = `Đang tải lên các bài báo...`;
+            } else if (evt.type === 'item_progress') {
+                const idx = evt.index;
+                const percent = Math.round((evt.completed / evt.total) * 100);
+                document.getElementById('uploadProgressBar').style.width = `${percent}%`;
+                document.getElementById('uploadProgressPercent').textContent = `${percent}%`;
+                document.getElementById('uploadProgressStepText').textContent = `Đang xử lý ${evt.completed} / ${evt.total} bài...`;
+                document.getElementById('uploadStatSuccess').textContent = evt.success_count;
+                document.getElementById('uploadStatFail').textContent = evt.fail_count;
+
+                const itemDiv = document.getElementById(`feed-item-${idx}`);
+                const icon = document.getElementById(`feed-icon-${idx}`);
+                const statusP = document.getElementById(`feed-status-${idx}`);
+
+                if (itemDiv && statusP) {
+                    if (evt.success) {
+                        itemDiv.className = "p-3 rounded-xl border border-emerald-200 bg-emerald-50/60 flex items-start justify-between gap-3 text-xs transition-all";
+                        if (icon) icon.innerHTML = `<span class="text-emerald-600 font-bold">✓</span>`;
+                        statusP.className = "text-[11px] text-emerald-700 font-medium mt-0.5";
+                        statusP.textContent = evt.message || "Tải lên & trích xuất GROBID thành công!";
+                    } else {
+                        itemDiv.className = "p-3 rounded-xl border border-rose-200 bg-rose-50/60 flex items-start justify-between gap-3 text-xs transition-all";
+                        if (icon) icon.innerHTML = `<span class="text-rose-600 font-bold">✗</span>`;
+                        statusP.className = "text-[11px] text-rose-700 font-medium mt-0.5";
+                        statusP.textContent = evt.message || "Tải lên thất bại.";
+                    }
+                    itemDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            } else if (evt.type === 'done') {
+                document.getElementById('uploadProgressBar').style.width = `100%`;
+                document.getElementById('uploadProgressPercent').textContent = `100%`;
+                document.getElementById('uploadProgressStepText').textContent = `Đã hoàn tất! (${evt.success_count} thành công, ${evt.fail_count} thất bại)`;
+                document.getElementById('btnCloseUploadModal').classList.remove('hidden');
+                const btnFinish = document.getElementById('btnFinishUpload');
+                btnFinish.classList.remove('hidden');
+                btnFinish.textContent = "✓ Hoàn tất & Cập nhật danh sách";
+                showToast(`✓ Đã tải lên ${evt.success_count} bài báo vào dự án ${evt.project_id}!`, true);
+            }
+        }
+
+        function closeUploadModal() {
+            const modal = document.getElementById('uploadModal');
+            const content = document.getElementById('uploadModalContent');
+            modal.classList.add('opacity-0');
+            content.classList.remove('scale-100');
+            content.classList.add('scale-95');
+            setTimeout(() => modal.classList.add('hidden'), 200);
+        }
+
+        // Init
+        document.addEventListener('DOMContentLoaded', () => { loadPapers(); initSlrIntegration(); });
+
+    
+        // --- TAB SWITCHING & PERSISTENCE LOGIC ---
+        function switchTab(event, tabName) {
+            if (event) event.preventDefault();
+            const viewFetch = document.getElementById('viewFetch');
+            const viewUpload = document.getElementById('viewUpload');
+            const navTabFetch = document.getElementById('navTabFetch');
+            const navTabUpload = document.getElementById('navTabUpload');
+            const navIconFetch = document.getElementById('navIconFetch');
+            const navIconUpload = document.getElementById('navIconUpload');
+            const breadcrumb = document.getElementById('headerBreadcrumbTitle');
+
+            if (tabName === 'upload') {
+                if(viewFetch) viewFetch.classList.add('hidden');
+                if(viewUpload) viewUpload.classList.remove('hidden');
+
+                if(navTabFetch) navTabFetch.className = "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100/70";
+                if(navIconFetch) navIconFetch.className = "w-7 h-7 rounded-lg flex items-center justify-center bg-slate-100 text-slate-500";
+
+                if(navTabUpload) navTabUpload.className = "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all bg-indigo-50 text-indigo-700 shadow-sm shadow-indigo-500/5 font-bold border border-indigo-100/80";
+                if(navIconUpload) navIconUpload.className = "w-7 h-7 rounded-lg flex items-center justify-center bg-indigo-600 text-white shadow-sm shadow-indigo-500/20";
+
+                if (breadcrumb) breadcrumb.textContent = "Kho bài báo & Upload";
+                window.history.pushState({ tab: 'upload' }, '', '/upload');
+                loadPapers();
+            } else {
+                if(viewUpload) viewUpload.classList.add('hidden');
+                if(viewFetch) viewFetch.classList.remove('hidden');
+
+                if(navTabFetch) navTabFetch.className = "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all bg-blue-50 text-blue-700 shadow-sm shadow-blue-500/5 font-bold border border-blue-100/80";
+                if(navIconFetch) navIconFetch.className = "w-7 h-7 rounded-lg flex items-center justify-center bg-blue-600 text-white shadow-sm shadow-blue-500/20";
+
+                if(navTabUpload) navTabUpload.className = "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100/70";
+                if(navIconUpload) navIconUpload.className = "w-7 h-7 rounded-lg flex items-center justify-center bg-slate-100 text-slate-500";
+
+                if (breadcrumb) breadcrumb.textContent = "Thu thập & Tải bài báo";
+                window.history.pushState({ tab: 'fetch' }, '', '/');
+            }
+
+            if (window.innerWidth < 768) {
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('sidebarOverlay');
+                if (sidebar) sidebar.classList.add('-translate-x-full');
+                if (overlay) overlay.classList.add('hidden');
+            }
+        }
+
+        window.addEventListener('popstate', (e) => {
+            const isUpload = window.location.pathname === '/upload' || (e.state && e.state.tab === 'upload');
+            switchTab(null, isUpload ? 'upload' : 'fetch');
+        });
+
+        // Initialize state on load
+        document.addEventListener('DOMContentLoaded', () => {
+            const isUpload = window.location.pathname === '/upload';
+            if (isUpload) {
+                switchTab(null, 'upload');
+            }
+            
+            // LOCALSTORAGE PERSISTENCE:
+            // 1. Auto-save & Restore DOI Textarea
+            const doiInput = document.getElementById('doiInput');
+            if (doiInput) {
+                const savedDois = localStorage.getItem('slr_doi_input');
+                if (savedDois && !doiInput.value.trim()) {
+                    doiInput.value = savedDois;
+                }
+                doiInput.addEventListener('input', () => {
+                    localStorage.setItem('slr_doi_input', doiInput.value);
+                });
+            }
+            
+            // 2. Restore Scanned Results Table
+            const savedResults = localStorage.getItem('slr_scan_results');
+            if (savedResults && (!currentResults || currentResults.length === 0)) {
+                try {
+                    const parsed = JSON.parse(savedResults);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        currentResults = parsed;
+                        displayResults(parsed);
+                    }
+                } catch (e) {
+                    console.warn('Failed to parse saved results', e);
+                }
+            }
+        });
+
+        // Wrap displayResults to always auto-save to localStorage
+        const prevDisplayResults = displayResults;
+        displayResults = function(results) {
+            prevDisplayResults(results);
+            try {
+                if (results && results.length > 0) {
+                    localStorage.setItem('slr_scan_results', JSON.stringify(results));
+                }
+            } catch(e) {}
+        };
+        
+        // Wrap clearResults to clear localStorage
+        const prevClearResults = clearResults;
+        clearResults = function() {
+            prevClearResults();
+            localStorage.removeItem('slr_scan_results');
+        };
+</script>
+
+    <!-- Upload Modals -->
+
+    <div id="uploadBar" class="fixed bottom-0 left-0 md:left-64 xl:left-72 right-0 bg-white/95 backdrop-blur-lg border-t border-slate-200 p-4 transform translate-y-full transition-transform duration-300 z-40 custom-shadow">
+        <div class="w-full px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center shrink-0">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                </div>
+                <div>
+                    <h4 class="font-bold text-slate-800 text-base flex items-center gap-2">
+                        <span>Sẵn sàng Upload <span id="barSelectedCount" class="text-indigo-600">0</span> bài báo</span>
+                        <span class="text-xs font-normal text-slate-400">•</span>
+                        <span class="text-xs font-medium text-slate-500" id="barSelectedSize">0 MB</span>
+                    </h4>
+                    <p class="text-xs font-medium text-slate-500 flex items-center gap-1.5 mt-0.5">
+                        <span>Dự án đích:</span>
+                        <span id="barTargetProject" class="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">Chưa chọn dự án</span>
+                    </p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="previewPayload()" class="px-4 py-2.5 rounded-xl border border-slate-200 font-semibold text-xs text-slate-700 hover:bg-slate-50 transition-all flex items-center gap-1.5 cursor-pointer">
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                    <span>Xem trước JSON</span>
+                </button>
+                <button id="btnExecutePush" onclick="startPushToProject()" class="px-6 py-2.5 rounded-xl font-bold text-xs text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-500/25 transform hover:-translate-y-0.5 cursor-pointer">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    <span>🚀 Đẩy lên Dự án SLR</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SLR Config Modal -->
+    <div id="slrConfigModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-2xl w-full max-w-lg p-6 m-4 custom-shadow transform scale-95 transition-transform" id="slrConfigModalContent">
+            <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm">⚙️</div>
+                    <h3 class="font-bold text-base text-slate-800">Cấu hình kết nối SLR System</h3>
+                </div>
+                <button onclick="closeSlrConfigModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <div class="space-y-4 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">Địa chỉ SLR Backend (Base URL)</label>
+                    <input type="text" id="cfgBaseUrl" placeholder="http://127.0.0.1:5000" class="w-full text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono">
+                    <p class="text-[11px] text-slate-400 mt-1">Mặc định: http://127.0.0.1:5000 (Backend Node/Express)</p>
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">Khóa bảo mật Public Upload (X-API-Key)</label>
+                    <input type="password" id="cfgApiKey" placeholder="Nhập API Key mới hoặc để trống nếu không đổi" class="w-full text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono">
+                    <p class="text-[11px] text-slate-400 mt-1" id="cfgApiKeyNote">Khóa bảo mật khớp với PUBLIC_UPLOAD_API_KEY trong file .env của backend.</p>
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">Mã dự án mặc định (Tùy chọn)</label>
+                    <input type="text" id="cfgDefaultProj" placeholder="Mã dự án (nếu muốn ghim cố định)" class="w-full text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono">
+                </div>
+
+                <div id="testConnResult" class="p-3 rounded-xl border text-xs hidden"></div>
+            </div>
+
+            <div class="mt-6 flex items-center justify-between pt-3 border-t border-slate-100">
+                <button type="button" onclick="testSlrConnection()" id="btnTestConn" class="px-3.5 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer">
+                    <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    <span>Kiểm tra kết nối</span>
+                </button>
+                <div class="flex gap-2">
+                    <button type="button" onclick="closeSlrConfigModal()" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer">Đóng</button>
+                    <button type="button" onclick="saveSlrConfig()" class="px-4 py-2 text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg shadow-sm cursor-pointer">Lưu cấu hình</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JSON Preview Modal -->
+    <div id="payloadModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-2xl w-full max-w-2xl p-6 m-4 custom-shadow transform scale-95 transition-transform flex flex-col max-h-[85vh]" id="payloadModalContent">
+            <div class="flex justify-between items-center mb-3">
+                <div class="flex items-center gap-2">
+                    <span class="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">{}</span>
+                    <h3 class="font-bold text-lg text-slate-800">Xem trước Payload & Tài liệu</h3>
+                </div>
+                <button onclick="closePayloadModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 cursor-pointer">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <p class="text-xs text-slate-500 mb-3">Dữ liệu file PDF sẽ được tải trực tiếp lên Cloudinary CDN (<code class="font-mono text-emerald-600">Direct-to-Cloud</code>) và kích hoạt import vào dự án SLR System (tự động dự phòng qua endpoint <code class="font-mono text-indigo-600">/upload-pdf</code>).</p>
+            <div class="flex-1 overflow-auto bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-xs leading-relaxed border border-slate-800 relative">
+                <pre id="payloadJsonPre">{}</pre>
+            </div>
+            <div class="mt-4 flex items-center justify-between pt-2 border-t border-slate-100">
+                <span class="text-xs text-slate-400" id="payloadItemCount">0 bài báo</span>
+                <div class="flex gap-2">
+                    <button onclick="copyPayloadJson()" id="btnCopyJson" class="px-4 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                        <span>Sao chép JSON</span>
+                    </button>
+                    <button onclick="closePayloadModal()" class="px-5 py-2 text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 rounded-lg shadow-sm cursor-pointer">Đóng</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Real-Time Upload Progress Modal -->
+    <div id="uploadModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden opacity-0 transition-opacity">
+        <div class="bg-white rounded-2xl w-full max-w-xl p-6 m-4 custom-shadow transform scale-95 transition-transform flex flex-col max-h-[90vh]" id="uploadModalContent">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center gap-3">
+                    <div id="uploadHeaderIcon" class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-base text-slate-800" id="uploadModalTitle">Đang đẩy bài báo lên Dự án SLR</h3>
+                        <p class="text-xs text-slate-500 mt-0.5" id="uploadModalSubtitle">Dự án đích: <span id="uploadTargetDisplay" class="font-semibold text-indigo-600">-</span></p>
+                    </div>
+                </div>
+                <button id="btnCloseUploadModal" onclick="closeUploadModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 hidden cursor-pointer">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+
+            <!-- Progress Bar & Metrics -->
+            <div class="py-4 border-b border-slate-100">
+                <div class="flex justify-between text-xs font-semibold text-slate-700 mb-2">
+                    <span id="uploadProgressStepText">Đang khởi tạo kết nối...</span>
+                    <span id="uploadProgressPercent" class="font-mono">0%</span>
+                </div>
+                <div class="h-2.5 rounded-full bg-slate-100 overflow-hidden mb-3">
+                    <div id="uploadProgressBar" class="h-full bg-gradient-to-r from-indigo-500 to-blue-600 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div class="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                        <span class="text-slate-400 block text-[10px] font-semibold uppercase">Tổng số</span>
+                        <span id="uploadStatTotal" class="font-bold text-slate-700 text-sm">0</span>
+                    </div>
+                    <div class="bg-emerald-50 p-2 rounded-lg border border-emerald-100">
+                        <span class="text-emerald-600 block text-[10px] font-semibold uppercase">Thành công</span>
+                        <span id="uploadStatSuccess" class="font-bold text-emerald-700 text-sm">0</span>
+                    </div>
+                    <div class="bg-rose-50 p-2 rounded-lg border border-rose-100">
+                        <span class="text-rose-600 block text-[10px] font-semibold uppercase">Thất bại</span>
+                        <span id="uploadStatFail" class="font-bold text-rose-700 text-sm">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-time Live Log Feed -->
+            <div class="flex-1 overflow-y-auto my-3 pr-1 space-y-2 max-h-[300px]" id="uploadItemsFeed">
+                <!-- Items populated dynamically via streaming NDJSON -->
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+                <div class="text-[11px] text-slate-400">
+                    Hệ thống tự động trích xuất metadata GROBID & lưu Cloudinary.
+                </div>
+                <div class="flex gap-2">
+                    <button id="btnFinishUpload" onclick="closeUploadModal(); loadPapers();" class="px-5 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-sm hidden cursor-pointer">
+                        ✓ Hoàn tất & Cập nhật
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+        <div class="bg-slate-900/95 text-white backdrop-blur-md px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 text-xs border border-slate-700/50">
+            <div id="toastIcon" class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">✓</div>
+            <div id="toastMsg" class="font-medium">Thông báo</div>
+        </div>
+    </div>
+</body>
+</html>

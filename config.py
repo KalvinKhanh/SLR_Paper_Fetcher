@@ -5,7 +5,7 @@ from dotenv import load_dotenv, dotenv_values
 # Tự động load file .env từ thư mục hiện tại
 BASE_DIR = Path(__file__).resolve().parent
 ENV_PATH = BASE_DIR / ".env"
-_API_FIELDS = ("ELSEVIER_API_KEY", "ELSEVIER_INST_TOKEN", "OPENALEX_API_KEY")
+_API_FIELDS = ("ELSEVIER_API_KEY", "ELSEVIER_INST_TOKEN", "OPENALEX_API_KEY", "SLR_API_BASE_URL", "SLR_PUBLIC_API_KEY", "SLR_DEFAULT_PROJECT_ID")
 _API_ENV_DEFAULTS = {key: os.getenv(key, "") for key in _API_FIELDS}
 load_dotenv(dotenv_path=ENV_PATH)
 
@@ -14,11 +14,18 @@ class Settings:
     ELSEVIER_INST_TOKEN: str = os.getenv("ELSEVIER_INST_TOKEN", "")
     OPENALEX_API_KEY: str = os.getenv("OPENALEX_API_KEY", "")
 
+    # SLR System Integration
+    SLR_API_BASE_URL: str = os.getenv("SLR_API_BASE_URL", "http://127.0.0.1:5000").rstrip("/")
+    SLR_PUBLIC_API_KEY: str = os.getenv("SLR_PUBLIC_API_KEY", "slr-public-upload-api-key-2026-secret").strip()
+    SLR_DEFAULT_PROJECT_ID: str = os.getenv("SLR_DEFAULT_PROJECT_ID", "").strip()
+
     def refresh_api_credentials(self):
         """Apply .env API-key edits without retaining a previously loaded key."""
         values = dotenv_values(ENV_PATH) if ENV_PATH.exists() else {}
         for key in _API_FIELDS:
             setattr(self, key, (values.get(key, _API_ENV_DEFAULTS[key]) or "").strip())
+        if self.SLR_API_BASE_URL:
+            self.SLR_API_BASE_URL = self.SLR_API_BASE_URL.rstrip("/")
     # Unpaywall API
     UNPAYWALL_EMAIL: str = os.getenv("UNPAYWALL_EMAIL", "bot@vnulib.edu.vn")
     

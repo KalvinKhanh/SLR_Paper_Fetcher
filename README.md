@@ -96,6 +96,22 @@ The application never solves or bypasses CAPTCHA/MFA. There is no Sci-Hub integr
 
 ## Progress and resume
 
+After a DOI scan, use **Cấu hình nguồn** above the results to select publishers
+of interest. **Quan tâm** and **Khác** show separate lists with counts; bulk
+download and RIS export follow the selected tab. Sources are identified from
+the resolved DOI destination. Other publisher hosts found during a scan can
+also be selected; unresolved DOIs remain in **Khác**. The selection is saved
+in the current browser's local storage and is applied to restored results.
+
+The fetch page lists the automatic acquisition channels separately from
+publishers: public PDFs via supplied links, known author copies, Unpaywall,
+Semantic Scholar, OpenAlex, PMC and arXiv; and institutional access through
+VNU/OpenAthens when configured. Scan results show a download route label and
+can be filtered by known OA link, VNU attempt, further OA search, downloaded
+PDF or invalid DOI. These labels describe the next attempt, not a guarantee
+that the article is accessible. Bulk download and RIS export follow both the
+publisher tab and the route filter.
+
 The UI distinguishes processed, successfully downloaded and failed articles.
 Each row shows the current stage/progress. OA byte percentage is available when
 the server reports a length; browser percentages describe workflow stages.

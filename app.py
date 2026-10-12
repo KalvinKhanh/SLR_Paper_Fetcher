@@ -20,7 +20,7 @@ import pandas as pd
 from config import settings
 from config import BASE_DIR
 from contextlib import asynccontextmanager
-from paper_io import download_path, safe_filename, valid_pdf_file, safe_message, public_url, institutional_url
+from paper_io import download_path, safe_filename, valid_pdf_file, safe_message, public_url, institutional_url, generate_standardized_filename
 from paper_store import get_store
 from doi_resolver import resolve_doi
 from browser_session import browser_manager, browser_worker
@@ -96,8 +96,16 @@ from downloader_engine import (
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     return templates.TemplateResponse(request=request, name="index.html", context={
-        "vnu_configured": bool(settings.VNU_LIBRARY_ID and settings.VNU_LIBRARY_PASSWORD)})
+        "vnu_configured": bool(settings.VNU_LIBRARY_ID and settings.VNU_LIBRARY_PASSWORD),
+        "active_tab": "fetch"
+    })
 
+@app.get("/upload", response_class=HTMLResponse)
+async def upload_page(request: Request):
+    return templates.TemplateResponse(request=request, name="upload.html", context={
+        "vnu_configured": bool(settings.VNU_LIBRARY_ID and settings.VNU_LIBRARY_PASSWORD),
+        "active_tab": "upload"
+    })
 
 @app.get("/api/health")
 async def health():
@@ -130,6 +138,61 @@ async def paper_status(doi: Optional[str] = None):
             get_store().update(record["doi"], "INVALID_PDF", message="PDF đã bị xóa hoặc không còn đầy đủ.")
             record["status"] = "INVALID_PDF"
     return {"papers": papers}
+
+@app.get("/api/downloaded-papers")
+async def downloaded_papers_endpoint():
+    from pathlib import Path
+    import json
+    store = get_store()
+    records = await asyncio.to_thread(store.list, 2000)
+    downloaded = []
+    for r in records:
+        if r["status"] == "DOWNLOADED" and r.get("file_path"):
+            p = Path(r["file_path"])
+            if p.exists() and valid_pdf_file(p):
+                try:
+                    size_bytes = p.stat().st_size
+                except OSError:
+                    size_bytes = 0
+                size_formatted = f"{size_bytes / (1024 * 1024):.2f} MB" if size_bytes >= 1024*1024 else f"{size_bytes / 1024:.1f} KB"
+                meta = {}
+                try:
+                    meta = json.loads(r.get("metadata") or "{}")
+                except Exception:
+                    pass
+                downloaded.append({
+                    "doi": r["doi"],
+                    "filename": r["filename"],
+                    "file_path": r["file_path"],
+                    "file_size": size_bytes,
+                    "file_size_formatted": size_formatted,
+                    "title": meta.get("title") or r["doi"],
+                    "authors": meta.get("authors") or "",
+                    "journal": meta.get("journal") or r.get("provider") or "",
+                    "year": meta.get("year") or "",
+                    "source": r.get("source") or "Unknown",
+                    "provider": r.get("provider") or "Generic",
+                    "resolved_url": r.get("resolved_url") or "",
+                    "updated_at": r.get("updated_at") or "",
+                    "last_uploaded_project": meta.get("last_uploaded_project") or "",
+                    "uploaded_at": meta.get("uploaded_at") or ""
+                })
+    return {"papers": downloaded, "total": len(downloaded)}
+
+@app.get("/api/download-file/{filename}")
+async def get_downloaded_file(filename: str):
+    from pathlib import Path
+    try:
+        target_path = download_path(settings.DOWNLOAD_FOLDER, filename, ".pdf")
+    except ValueError as error:
+        return JSONResponse({"success": False, "error": str(error)}, status_code=400)
+    if not target_path.exists() or not valid_pdf_file(target_path):
+        return JSONResponse({"success": False, "error": "File PDF không tồn tại hoặc không hợp lệ."}, status_code=404)
+    return FileResponse(
+        path=str(target_path),
+        filename=filename,
+        media_type="application/pdf"
+    )
 
 @app.post("/api/process")
 async def process_dois(dois: str = Form(None), file: UploadFile = File(None)):
@@ -240,23 +303,13 @@ async def process_dois(dois: str = Form(None), file: UploadFile = File(None)):
         def process_one_item(item):
             raw_text = item["raw"]
             doi = extract_doi(raw_text)
-            custom_name = item["custom_name"]
-            if not custom_name:
-                custom_name = f"{re.sub(r'[^a-zA-Z0-9]', '_', doi)}.pdf" if doi and doi.startswith("10.") else "paper.pdf"
             if not doi or not doi.startswith("10."):
                 import hashlib
                 get_store().update("invalid:" + hashlib.sha256(raw_text.encode()).hexdigest(), "INVALID_DOI",
                                    message="DOI không hợp lệ.")
-                return {"original": raw_text, "custom_name": custom_name,
-                        "title": item["custom_title"] or raw_text, "status": "INVALID_DOI",
+                return {"original": raw_text, "custom_name": item.get("custom_name") or "paper.pdf",
+                        "title": item.get("custom_title") or raw_text, "status": "INVALID_DOI",
                         "oa_link": None, "vnu_link": None}
-
-            custom_name = safe_filename(custom_name)
-
-            resolution = resolve_doi(doi)
-            saved = get_store().downloaded(doi)
-            if saved:
-                custom_name = saved["filename"]
 
             oa_link = oa_landing = source = None
             status = "Paywalled"
@@ -272,6 +325,13 @@ async def process_dois(dois: str = Form(None), file: UploadFile = File(None)):
                 source = fulltext_info.get("source")
                 status = fulltext_info.get("status") or ("Open Access" if oa_link else "Paywalled")
 
+            resolution = resolve_doi(doi)
+            saved = get_store().downloaded(doi)
+            if saved:
+                custom_name = saved["filename"]
+            else:
+                custom_name = generate_standardized_filename(doi, item.get("custom_name"), title)
+
             record = get_store().get(doi) or {}
             persistent_status = "DOWNLOADED" if saved else ("OPEN_ACCESS" if oa_link else record.get("status", "PENDING"))
             get_store().update(doi, persistent_status, filename=custom_name,
@@ -283,6 +343,7 @@ async def process_dois(dois: str = Form(None), file: UploadFile = File(None)):
                 "journal": item.get("custom_journal") or source or "",
                 "authors": item.get("custom_author") or "", "year": item.get("custom_year") or "",
                 "status": status, "state": (get_store().get(doi) or {}).get("status", "PENDING"), "already_exists": bool(saved),
+                "download_method": record.get("source") if saved else None,
                 "resolved_url": resolution.get("resolved_url"), "provider": resolution.get("provider"),
                 "oa_link": oa_link, "oa_landing": oa_landing, "source": source,
                 "vnu_link": institutional_url(settings.VNU_OPENATHENS_BASE_URL, doi)
@@ -318,14 +379,16 @@ async def process_dois(dois: str = Form(None), file: UploadFile = File(None)):
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 @app.post("/api/download")
-async def download_file(url: str = Form(...), filename: str = Form(...), doi: str = Form("")):
+async def download_file(url: str = Form(...), filename: str = Form(""), doi: str = Form("")):
+    doi = extract_doi(doi)
+    if not doi:
+        return JSONResponse({"success": False, "error": "Cần DOI hợp lệ để tải và theo dõi đúng bài."}, status_code=400)
+    if not filename:
+        filename = generate_standardized_filename(doi)
     try:
         target_path = download_path(settings.DOWNLOAD_FOLDER, filename)
     except ValueError as error:
         return JSONResponse({"success": False, "error": str(error)}, status_code=400)
-    doi = extract_doi(doi)
-    if not doi:
-        return JSONResponse({"success": False, "error": "Cần DOI hợp lệ để tải và theo dõi đúng bài."}, status_code=400)
     success, msg, method = await auto_download_paper(doi, target_path.name, oa_url=url)
     if success:
         record = get_store().get(doi) or {}
@@ -346,7 +409,7 @@ async def download_all(request: Request):
         names = set()
         for item in items:
             doi = extract_doi(item.get("doi"))
-            filename = safe_filename(item.get("filename") or re.sub(r"[^a-z0-9]", "_", doi) + ".pdf")
+            filename = safe_filename(item.get("filename") or generate_standardized_filename(doi, "", item.get("title", "")))
             if not doi or doi in seen or filename.lower() in names:
                 raise ValueError("Invalid DOI, duplicate DOI or duplicate filename")
             seen.add(doi)
@@ -453,7 +516,10 @@ async def auto_vnu_endpoint(doi: str = Form(...), filename: str = Form(...), tit
     if not doi.startswith("10."):
         return JSONResponse({"success": False, "error": "DOI không hợp lệ."}, status_code=400)
     try:
-        filename = safe_filename(filename)
+        if filename:
+            filename = safe_filename(filename)
+        else:
+            filename = generate_standardized_filename(doi, "", title)
     except ValueError as error:
         return JSONResponse({"success": False, "error": str(error)}, status_code=400)
     success, msg, method = await auto_download_paper(doi, filename, title)
@@ -532,6 +598,425 @@ async def download_ris_endpoint(filename: str = "slr_citations.ris"):
         path=str(target_path),
         filename=filename,
         media_type="application/x-research-info-systems"
+    )
+
+
+# ========================================================
+# SLR SYSTEM INTEGRATION ENDPOINTS
+# ========================================================
+
+@app.get("/api/slr/config")
+async def get_slr_config():
+    settings.refresh_api_credentials()
+    key = settings.SLR_PUBLIC_API_KEY
+    masked_key = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else ("***" if key else "")
+    return {
+        "base_url": settings.SLR_API_BASE_URL,
+        "has_api_key": bool(key),
+        "api_key_masked": masked_key,
+        "default_project_id": settings.SLR_DEFAULT_PROJECT_ID
+    }
+
+@app.post("/api/slr/config")
+async def update_slr_config(request: Request):
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"success": False, "error": "Dữ liệu JSON không hợp lệ."}, status_code=400)
+    
+    base_url = str(data.get("base_url") or "").strip().rstrip("/")
+    api_key = str(data.get("api_key") or "").strip()
+    default_project_id = str(data.get("default_project_id") or "").strip()
+
+    if base_url:
+        settings.SLR_API_BASE_URL = base_url
+    if "api_key" in data and api_key:
+        settings.SLR_PUBLIC_API_KEY = api_key
+    if "default_project_id" in data:
+        settings.SLR_DEFAULT_PROJECT_ID = default_project_id
+
+    # Persist to .env
+    try:
+        from config import ENV_PATH
+        env_lines = []
+        if ENV_PATH.exists():
+            with open(ENV_PATH, "r", encoding="utf-8") as f:
+                env_lines = f.readlines()
+        
+        updated_keys = set()
+        new_lines = []
+        for line in env_lines:
+            if line.startswith("SLR_API_BASE_URL="):
+                new_lines.append(f"SLR_API_BASE_URL={settings.SLR_API_BASE_URL}\n")
+                updated_keys.add("SLR_API_BASE_URL")
+            elif line.startswith("SLR_PUBLIC_API_KEY="):
+                new_lines.append(f"SLR_PUBLIC_API_KEY={settings.SLR_PUBLIC_API_KEY}\n")
+                updated_keys.add("SLR_PUBLIC_API_KEY")
+            elif line.startswith("SLR_DEFAULT_PROJECT_ID="):
+                new_lines.append(f"SLR_DEFAULT_PROJECT_ID={settings.SLR_DEFAULT_PROJECT_ID}\n")
+                updated_keys.add("SLR_DEFAULT_PROJECT_ID")
+            else:
+                new_lines.append(line)
+        
+        if "SLR_API_BASE_URL" not in updated_keys:
+            new_lines.append(f"SLR_API_BASE_URL={settings.SLR_API_BASE_URL}\n")
+        if "SLR_PUBLIC_API_KEY" not in updated_keys:
+            new_lines.append(f"SLR_PUBLIC_API_KEY={settings.SLR_PUBLIC_API_KEY}\n")
+        if "SLR_DEFAULT_PROJECT_ID" not in updated_keys:
+            new_lines.append(f"SLR_DEFAULT_PROJECT_ID={settings.SLR_DEFAULT_PROJECT_ID}\n")
+
+        with open(ENV_PATH, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+    except Exception as e:
+        print(f"[SLR CONFIG] Warning writing .env: {e}")
+
+    return {
+        "success": True,
+        "message": "Đã lưu cấu hình kết nối SLR System thành công!",
+        "config": {
+            "base_url": settings.SLR_API_BASE_URL,
+            "has_api_key": bool(settings.SLR_PUBLIC_API_KEY),
+            "default_project_id": settings.SLR_DEFAULT_PROJECT_ID
+        }
+    }
+
+@app.get("/api/slr/projects")
+async def get_slr_projects():
+    settings.refresh_api_credentials()
+    base_url = settings.SLR_API_BASE_URL or "http://127.0.0.1:5000"
+    api_key = settings.SLR_PUBLIC_API_KEY
+    if not api_key:
+        return JSONResponse({
+            "success": False,
+            "error": "Chưa cấu hình API Key (SLR_PUBLIC_API_KEY). Vui lòng cấu hình trước."
+        }, status_code=400)
+
+    url = f"{base_url}/api/public/papers/projects"
+    try:
+        def fetch():
+            return requests.get(url, headers={"X-API-Key": api_key}, timeout=5)
+        resp = await asyncio.to_thread(fetch)
+        if resp.status_code == 200:
+            data = resp.json()
+            return {"success": True, "projects": data.get("data", [])}
+        elif resp.status_code == 401:
+            return JSONResponse({
+                "success": False,
+                "error": "Mã API Key không hợp lệ (401 Unauthorized). Vui lòng kiểm tra lại."
+            }, status_code=401)
+        else:
+            return JSONResponse({
+                "success": False,
+                "error": f"SLR Backend trả về lỗi {resp.status_code}: {resp.text}"
+            }, status_code=resp.status_code)
+    except requests.exceptions.ConnectionError:
+        return JSONResponse({
+            "success": False,
+            "error": f"Không thể kết nối tới SLR Backend tại {base_url}. Hãy chắc chắn server backend đang chạy (PORT 5000)."
+        }, status_code=503)
+    except Exception as e:
+        return JSONResponse({"success": False, "error": f"Lỗi kiểm tra dự án: {str(e)}"}, status_code=500)
+
+@app.post("/api/slr/push-papers")
+async def push_papers_to_slr(request: Request):
+    """Đẩy các file PDF đã chọn lên SLR Project qua Public API với streaming tiến trình thời gian thực (NDJSON)."""
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"success": False, "error": "Dữ liệu JSON không hợp lệ."}, status_code=400)
+
+    project_id = str(data.get("project_id") or "").strip()
+    dois = data.get("dois", [])
+
+    if not project_id:
+        return JSONResponse({"success": False, "error": "Vui lòng chọn hoặc nhập Mã Dự Án (Project ID)."}, status_code=400)
+    if not isinstance(dois, list) or not dois:
+        return JSONResponse({"success": False, "error": "Chưa chọn bài báo nào để tải lên."}, status_code=400)
+
+    settings.refresh_api_credentials()
+    base_url = settings.SLR_API_BASE_URL or "http://127.0.0.1:5000"
+    api_key = settings.SLR_PUBLIC_API_KEY
+    upload_url = f"{base_url}/api/public/papers/upload-pdf"
+
+    store = get_store()
+    from pathlib import Path
+    import json
+    from datetime import datetime, timezone
+
+    async def stream_upload():
+        total = len(dois)
+        success_count = 0
+        fail_count = 0
+
+        yield json.dumps({"type": "start", "total": total, "project_id": project_id}) + "\n"
+
+        for idx, doi in enumerate(dois):
+            record = await asyncio.to_thread(store.get, doi)
+            if not record:
+                fail_count += 1
+                yield json.dumps({
+                    "type": "item_progress",
+                    "index": idx,
+                    "doi": doi,
+                    "filename": "Unknown",
+                    "success": False,
+                    "message": "Không tìm thấy thông tin bài báo trong thư viện nội bộ.",
+                    "completed": idx + 1,
+                    "total": total,
+                    "success_count": success_count,
+                    "fail_count": fail_count
+                }, ensure_ascii=False) + "\n"
+                continue
+
+            filename = record.get("filename") or f"{doi.replace('/', '_')}.pdf"
+            file_path = record.get("file_path")
+            target_path = Path(file_path) if file_path else (settings.DOWNLOAD_FOLDER / filename)
+
+            if not target_path.exists() or not valid_pdf_file(target_path):
+                fail_count += 1
+                yield json.dumps({
+                    "type": "item_progress",
+                    "index": idx,
+                    "doi": doi,
+                    "filename": filename,
+                    "success": False,
+                    "message": "File PDF không tồn tại hoặc bị lỗi định dạng trên ổ đĩa.",
+                    "completed": idx + 1,
+                    "total": total,
+                    "success_count": success_count,
+                    "fail_count": fail_count
+                }, ensure_ascii=False) + "\n"
+                continue
+
+            try:
+                def upload_one_file():
+                    # Parse metadata safely if present
+                    meta_dict = {}
+                    try:
+                        raw_meta = record.get("metadata")
+                        if isinstance(raw_meta, str) and raw_meta.strip():
+                            parsed = json.loads(raw_meta)
+                            if isinstance(parsed, str):
+                                parsed = json.loads(parsed)
+                            if isinstance(parsed, dict):
+                                meta_dict = parsed
+                        elif isinstance(raw_meta, dict):
+                            meta_dict = raw_meta
+                    except Exception:
+                        meta_dict = {}
+
+                    # 1. Attempt Direct-to-Cloud Upload (Cloudinary signed upload)
+                    try:
+                        sig_url = f"{base_url}/api/public/papers/upload-signature"
+                        sig_resp = requests.post(
+                            sig_url,
+                            json={"projectId": project_id, "fileName": target_path.name},
+                            headers={"X-API-Key": api_key},
+                            timeout=15,
+                        )
+                        if sig_resp.status_code in (200, 201):
+                            sig_payload = sig_resp.json()
+                            sig_data = sig_payload.get("data", {})
+                            cld_upload_url = sig_data.get("uploadUrl")
+                            api_key_cld = sig_data.get("apiKey")
+                            timestamp = sig_data.get("timestamp")
+                            signature = sig_data.get("signature")
+                            folder = sig_data.get("folder")
+                            public_id = sig_data.get("publicId")
+                            base_name = sig_data.get("baseName")
+
+                            if cld_upload_url and signature and api_key_cld:
+                                with open(target_path, "rb") as f:
+                                    cld_payload = {
+                                        "api_key": api_key_cld,
+                                        "timestamp": str(timestamp),
+                                        "signature": signature,
+                                        "folder": folder,
+                                        "public_id": public_id,
+                                    }
+                                    cld_files = {"file": (target_path.name, f, "application/pdf")}
+                                    cld_resp = requests.post(cld_upload_url, data=cld_payload, files=cld_files, timeout=120)
+
+                                if cld_resp.status_code in (200, 201):
+                                    cld_json = cld_resp.json()
+                                    cld_public_id = cld_json.get("public_id")
+                                    cld_secure_url = cld_json.get("secure_url")
+                                    cld_bytes = cld_json.get("bytes", target_path.stat().st_size)
+
+                                    authors_val = meta_dict.get("authors")
+                                    authors_list = []
+                                    if isinstance(authors_val, str) and authors_val.strip():
+                                        authors_list = [{"name": a.strip()} for a in authors_val.replace(";", ",").split(",") if a.strip()]
+                                    elif isinstance(authors_val, list):
+                                        authors_list = [{"name": a if isinstance(a, str) else a.get("name", "")} for a in authors_val]
+
+                                    year_val = None
+                                    if meta_dict.get("year"):
+                                        try:
+                                            year_val = int(str(meta_dict.get("year")).strip()[:4])
+                                        except Exception:
+                                            year_val = None
+
+                                    fin_payload = {
+                                        "projectId": project_id,
+                                        "baseName": base_name,
+                                        "publicId": cld_public_id,
+                                        "secureUrl": cld_secure_url,
+                                        "fileName": target_path.name,
+                                        "bytes": cld_bytes,
+                                        "metadata": {
+                                            "title": meta_dict.get("title") or record.get("title"),
+                                            "doi": doi,
+                                            "abstract": meta_dict.get("abstract"),
+                                            "authors": authors_list if authors_list else None,
+                                            "year": year_val,
+                                            "journal": meta_dict.get("journal") or meta_dict.get("venue"),
+                                        },
+                                    }
+
+                                    fin_url = f"{base_url}/api/public/papers/finalize-upload"
+                                    fin_resp = requests.post(
+                                        fin_url,
+                                        json=fin_payload,
+                                        headers={"X-API-Key": api_key},
+                                        timeout=60,
+                                    )
+                                    if fin_resp.status_code in (200, 201):
+                                        return fin_resp
+                                    print(f"[DIRECT UPLOAD] Finalize returned {fin_resp.status_code}. Falling back to proxy upload.")
+                                else:
+                                    print(f"[DIRECT UPLOAD] Cloudinary upload returned {cld_resp.status_code}. Falling back to proxy upload.")
+                            else:
+                                print("[DIRECT UPLOAD] Incomplete signature payload. Falling back to proxy upload.")
+                        else:
+                            print(f"[DIRECT UPLOAD] Signature endpoint returned {sig_resp.status_code}. Falling back to proxy upload.")
+                    except Exception as direct_err:
+                        print(f"[DIRECT UPLOAD] Exception occurred: {direct_err}. Falling back to proxy upload.")
+
+                    # 2. Fallback: Legacy proxy upload directly to backend
+                    with open(target_path, "rb") as f:
+                        files = {"file": (target_path.name, f, "application/pdf")}
+                        data_fields = {"projectId": project_id}
+                        headers = {"X-API-Key": api_key}
+                        return requests.post(upload_url, files=files, data=data_fields, headers=headers, timeout=120)
+
+                resp = await asyncio.to_thread(upload_one_file)
+
+                if resp.status_code in (200, 201):
+                    res_json = resp.json()
+                    imported_ids = res_json.get("data", {}).get("importedPaperIds", [])
+                    msg = f"Đã upload & import thành công (Mã Paper: {', '.join(imported_ids) if imported_ids else 'OK'})"
+                    success_count += 1
+
+                    try:
+                        raw_meta = record.get("metadata")
+                        meta = {}
+                        if isinstance(raw_meta, str) and raw_meta.strip():
+                            parsed = json.loads(raw_meta)
+                            if isinstance(parsed, str):
+                                parsed = json.loads(parsed)
+                            if isinstance(parsed, dict):
+                                meta = parsed
+                        elif isinstance(raw_meta, dict):
+                            meta = raw_meta
+                        meta["last_uploaded_project"] = project_id
+                        meta["uploaded_at"] = datetime.now(timezone.utc).isoformat()
+                        store.update(doi, record["status"], metadata=meta, message=f"Đã đẩy lên dự án {project_id}")
+                    except Exception as meta_err:
+                        print(f"[STORE UPDATE] Error: {meta_err}")
+
+                    yield json.dumps({
+                        "type": "item_progress",
+                        "index": idx,
+                        "doi": doi,
+                        "filename": target_path.name,
+                        "success": True,
+                        "message": msg,
+                        "paper_ids": imported_ids,
+                        "completed": idx + 1,
+                        "total": total,
+                        "success_count": success_count,
+                        "fail_count": fail_count
+                    }, ensure_ascii=False) + "\n"
+                else:
+                    fail_count += 1
+                    error_msg = f"HTTP {resp.status_code}: {resp.text}"
+                    try:
+                        err_json = resp.json()
+                        if err_json.get("message"):
+                            error_msg = err_json["message"]
+                        elif err_json.get("error", {}).get("message"):
+                            error_msg = err_json["error"]["message"]
+                    except Exception:
+                        pass
+                    yield json.dumps({
+                        "type": "item_progress",
+                        "index": idx,
+                        "doi": doi,
+                        "filename": target_path.name,
+                        "success": False,
+                        "message": error_msg,
+                        "completed": idx + 1,
+                        "total": total,
+                        "success_count": success_count,
+                        "fail_count": fail_count
+                    }, ensure_ascii=False) + "\n"
+
+            except requests.exceptions.Timeout:
+                fail_count += 1
+                yield json.dumps({
+                    "type": "item_progress",
+                    "index": idx,
+                    "doi": doi,
+                    "filename": target_path.name,
+                    "success": False,
+                    "message": "Quá thời gian phản hồi từ server (Timeout 120s).",
+                    "completed": idx + 1,
+                    "total": total,
+                    "success_count": success_count,
+                    "fail_count": fail_count
+                }, ensure_ascii=False) + "\n"
+            except requests.exceptions.ConnectionError:
+                fail_count += 1
+                yield json.dumps({
+                    "type": "item_progress",
+                    "index": idx,
+                    "doi": doi,
+                    "filename": target_path.name,
+                    "success": False,
+                    "message": f"Mất kết nối tới SLR Backend ({base_url}).",
+                    "completed": idx + 1,
+                    "total": total,
+                    "success_count": success_count,
+                    "fail_count": fail_count
+                }, ensure_ascii=False) + "\n"
+            except Exception as e:
+                fail_count += 1
+                yield json.dumps({
+                    "type": "item_progress",
+                    "index": idx,
+                    "doi": doi,
+                    "filename": target_path.name,
+                    "success": False,
+                    "message": f"Lỗi không xác định: {str(e)}",
+                    "completed": idx + 1,
+                    "total": total,
+                    "success_count": success_count,
+                    "fail_count": fail_count
+                }, ensure_ascii=False) + "\n"
+
+        yield json.dumps({
+            "type": "done",
+            "total": total,
+            "success_count": success_count,
+            "fail_count": fail_count,
+            "project_id": project_id
+        }, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(
+        stream_upload(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
     )
 
 def run_server():

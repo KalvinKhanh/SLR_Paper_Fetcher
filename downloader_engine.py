@@ -498,24 +498,44 @@ def _run_sync_vnu(doi: str, output_filename: str, progress_callback=None, status
                 return candidate
         return pages[0] if pages else current
 
-    def select_sciencedirect_institution(page):
-        """Follow Elsevier's organization SSO prompt for the configured VNU account."""
+    def select_publisher_institution(page):
+        """Follow publisher's organization SSO prompt (Elsevier, IEEE, Springer, etc.) for the configured VNU account."""
         try:
             guard_action(page)
             accept_browser_cookies(page)
             if is_authenticated(page) or has_fulltext_access(page):
                 return False
             host = (urlparse(page.url).hostname or "").lower()
-            if not any(host == domain or host.endswith("." + domain)
-                       for domain in ("sciencedirect.com", "elsevier.com")):
+            known_domains = (
+                "sciencedirect.com", "elsevier.com", "ieee.org", "springer.com", "nature.com",
+                "springeropen.com", "biomedcentral.com", "springernature.com", "wiley.com",
+                "acm.org", "tandfonline.com", "oup.com", "oxfordacademic.com", "cambridge.org",
+                "sagepub.com", "iop.org", "aip.org", "scitation.org", "frontiersin.org",
+                "mdpi.com", "openathens.net", "seamlessaccess.org"
+            )
+            is_allowed_domain = any(host == d or host.endswith("." + d) for d in known_domains) or any(k in host for k in ("wayf", "auth", "login", "sso", "shibboleth"))
+            if not is_allowed_domain:
                 return False
 
             access_button = page.locator(
                 'button:has-text("Access through your organization"), '
                 'a:has-text("Access through your organization"), '
                 '[aria-label*="Access through your organization" i], '
+                'button:has-text("Log in via an institution"), '
+                'a:has-text("Log in via an institution"), '
+                '[aria-label*="Log in via an institution" i], '
+                'a[href*="/signup-login"]:has-text("institution"), '
+                'button:has-text("Access via your institution"), '
+                'a:has-text("Access via your institution"), '
                 'button:has-text("Access through"), '
-                'a:has-text("Access through")'
+                'a:has-text("Access through"), '
+                'button:has-text("Access Through Your Institution"), '
+                'a:has-text("Institutional Sign In"), '
+                'a:has-text("Institutional Login"), '
+                'button:has-text("Institutional Login"), '
+                'button:has-text("Sign in via your institution"), a:has-text("Sign in via your institution"), '
+                'button:has-text("Institutional sign-in"), a:has-text("Institutional sign-in"), '
+                'a:has-text("Find your institution"), button:has-text("Find your institution")'
             ).first
             if access_button.count() and access_button.is_visible():
                 print("[AUTH] Clicking 'Access through your organization' button")
@@ -526,33 +546,50 @@ def _run_sync_vnu(doi: str, output_filename: str, progress_callback=None, status
                 accept_browser_cookies(page)
 
             organization_input = page.locator(
+                'input#autocomplete-input, input#inst-typeahead, input#institution, input#institution-search, '
                 'input[aria-label*="organization" i], input[placeholder*="organization" i], '
+                'input[aria-label*="institution" i], input[placeholder*="institution" i], '
                 'input[name*="organization" i], input[id*="organization" i], '
-                'input[name*="institution" i], input[id*="institution" i]'
+                'input[name*="institution" i], input[id*="institution" i], '
+                'input[title*="institution" i], input[placeholder*="Start typing" i], '
+                'input[placeholder*="Find your" i], input[placeholder*="Enter your" i]'
             ).first
             if not organization_input.count():
                 organization_input = page.get_by_label(
-                    re.compile(r"Organization name or email", re.IGNORECASE)
+                    re.compile(r"Organization|Institution name or email", re.IGNORECASE)
                 ).first
             if not organization_input.count():
-                organization_input = page.locator('input[type="text"], input:not([type])').first
+                auth_containers = page.locator('dialog, [role="dialog"], .modal, form, #wayf, .wayf, .login, .auth-container, main, #main-content')
+                candidate_inputs = auth_containers.locator('input[type="text"], input[type="search"], input:not([type])')
+                for i in range(min(candidate_inputs.count(), 5)):
+                    cand = candidate_inputs.nth(i)
+                    cand_name = (cand.get_attribute("name") or "").lower()
+                    cand_ph = (cand.get_attribute("placeholder") or "").lower()
+                    if any(s in cand_name or s in cand_ph for s in ("query", "q", "search articles", "search all", "search springer", "search ieee", "search sciencedirect")):
+                        continue
+                    if cand.is_visible():
+                        organization_input = cand
+                        break
 
             if organization_input.count() and organization_input.is_visible():
                 guard_action(page)
-                organization_input.fill("Vietnam National University Ho Chi Minh City")
-                page.wait_for_timeout(1500)
+                organization_input.fill("Vietnam National University")
+                try:
+                    organization_input.press("ArrowDown", delay=100)
+                except Exception:
+                    pass
+                page.wait_for_timeout(1000)
 
                 submit_button = page.locator(
                     'button:has-text("Submit and continue"), input[type="submit"], '
-                    'a:has-text("Submit and continue"), button:has-text("Continue"), button:has-text("Find")'
+                    'a:has-text("Submit and continue"), button:has-text("Continue"), button:has-text("Find"), button:has-text("Search")'
                 ).first
 
                 def find_and_select_target_org():
                     options_locator = page.locator(
                         '[role="option"], ul[role="listbox"] li, ul.results-list li, '
                         'ul li button, ul li a, button:has-text("Vietnam National University"), '
-                        'a:has-text("Vietnam National University"), li:has-text("Vietnam National University"), '
-                        'div:has-text("Vietnam National University")'
+                        'a:has-text("Vietnam National University"), li:has-text("Vietnam National University")'
                     )
                     count = options_locator.count()
                     candidates = []
@@ -560,6 +597,8 @@ def _run_sync_vnu(doi: str, output_filename: str, progress_callback=None, status
                         try:
                             elem = options_locator.nth(idx)
                             if not elem.is_visible():
+                                continue
+                            if elem.locator("input").count() > 0:
                                 continue
                             text = (elem.inner_text() or "").strip()
                             if "vietnam national university" in text.lower() or "ho chi minh" in text.lower():
@@ -570,12 +609,21 @@ def _run_sync_vnu(doi: str, output_filename: str, progress_callback=None, status
                     if not candidates:
                         return None
 
+                    # Lọc bỏ những thẻ bao ngoài chứa input (ví dụ container của cả form tìm kiếm)
+                    valid_candidates = []
+                    for idx, elem, text in candidates:
+                        if elem.locator("input").count() == 0:
+                            valid_candidates.append((idx, elem, text))
+                            
+                    if not valid_candidates:
+                        return None
+
                     # Tiêu chí: "chọn cái thứ hai á ko phải cái law"
-                    non_law_candidates = [c for c in candidates if "law" not in c[2].lower() and "luật" not in c[2].lower()]
+                    non_law_candidates = [c for c in valid_candidates if "law" not in c[2].lower() and "luật" not in c[2].lower()]
                     chosen = None
 
-                    if len(candidates) >= 2:
-                        second_candidate = candidates[1]
+                    if len(valid_candidates) >= 2:
+                        second_candidate = valid_candidates[1]
                         if "law" not in second_candidate[2].lower() and "luật" not in second_candidate[2].lower():
                             chosen = second_candidate
                     
@@ -584,12 +632,21 @@ def _run_sync_vnu(doi: str, output_filename: str, progress_callback=None, status
 
                     return chosen
 
-                chosen_org = find_and_select_target_org()
+                chosen_org = None
+                for _ in range(10):
+                    chosen_org = find_and_select_target_org()
+                    if chosen_org:
+                        break
+                    page.wait_for_timeout(500)
+                    
                 if not chosen_org and submit_button.count() and submit_button.is_visible():
                     guard_action(page)
                     submit_button.click(force=True, timeout=5000)
-                    page.wait_for_timeout(2000)
-                    chosen_org = find_and_select_target_org()
+                    for _ in range(5):
+                        page.wait_for_timeout(500)
+                        chosen_org = find_and_select_target_org()
+                        if chosen_org:
+                            break
 
                 if chosen_org:
                     idx, elem, text = chosen_org
@@ -618,7 +675,7 @@ def _run_sync_vnu(doi: str, output_filename: str, progress_callback=None, status
                         return True
             return False
         except Exception as e:
-            print(f"[AUTH] Error in select_sciencedirect_institution: {e}")
+            print(f"[AUTH] Error in select_publisher_institution: {e}")
             return False
 
     def authenticate_vnu_redirect(page):
@@ -886,7 +943,7 @@ def _run_sync_vnu(doi: str, output_filename: str, progress_callback=None, status
                 elif is_authenticated(page) or has_fulltext_access(page):
                     break
                 else:
-                    select_sciencedirect_institution(page)
+                    select_publisher_institution(page)
                 next_page = active_auth_page(page)
                 wait_for_stable_page(next_page)
                 if (id(next_page), next_page.url) == step:
@@ -984,8 +1041,10 @@ def _run_sync_vnu(doi: str, output_filename: str, progress_callback=None, status
 
             # Tìm nút PDF hoặc link tải PDF
             publisher_pdf_selector = (
-                'a[href*="/pdfft"], a[href*="/pdf"], a[aria-label*="Download PDF" i], '
+                'a[href*="/content/pdf/"], a[href*="/pdfft"], a[href*="/pdf"], a[aria-label*="Download PDF" i], '
                 'button[aria-label*="Download PDF" i], a:has-text("Download PDF"), button:has-text("Download PDF"), '
+                'a:has-text("Download chapter PDF"), button:has-text("Download chapter PDF"), '
+                'a:has-text("Download book PDF"), button:has-text("Download book PDF"), '
                 'a[href*="/stamp/"], a.pdf-btn, a[href*=".pdf"], a[data-article-pdf], a[download], '
                 'a[aria-label*="pdf" i], button[aria-label*="pdf" i], a:has-text("PDF"), button:has-text("PDF"), '
                 'a:has-text("Download"), button:has-text("Download"), a:has-text("Full Text"), button:has-text("Full Text")'

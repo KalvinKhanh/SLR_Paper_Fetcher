@@ -83,6 +83,14 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(events[-1]["results"][1]["status"], "INVALID_DOI")
         self.assertEqual(events[-1]["results"][0]["doi"], DOI)
 
+    def test_scan_exposes_download_method_for_saved_pdf(self):
+        path = self.root / "saved.pdf"
+        path.write_bytes(PDF)
+        get_store().update(DOI, "DOWNLOADED", filename=path.name, file_path=str(path), source="vnu")
+        result = self.events(self.client.post("/api/process", data={"dois": DOI}))[-1]["results"][0]
+        self.assertTrue(result["already_exists"])
+        self.assertEqual(result["download_method"], "vnu")
+
     def test_csv_and_excel_inputs_are_supported(self):
         import io
         import pandas as pd
@@ -94,7 +102,9 @@ class WorkflowTests(unittest.TestCase):
             else:
                 table.to_excel(data, index=False)
             response = self.client.post("/api/process", files={"file": ("papers." + extension, data.getvalue())})
-            self.assertEqual(self.events(response)[-1]["results"][0]["custom_name"], "article.pdf")
+            name = self.events(response)[-1]["results"][0]["custom_name"]
+            self.assertTrue(name.startswith("10.1016_j.example.2026.123456_article_"))
+            self.assertTrue(name.endswith(".pdf"))
 
     def test_health_and_ris_path_validation(self):
         self.assertEqual(self.client.get("/api/health").json(), {"status": "ok"})
