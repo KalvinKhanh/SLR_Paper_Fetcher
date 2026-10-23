@@ -498,6 +498,10 @@ def _run_sync_vnu(doi: str, output_filename: str, progress_callback=None, status
                 return candidate
         return pages[0] if pages else current
 
+    def is_citation_link(text):
+        # "Download references/citation" saves .ris/.bib files, never the article PDF.
+        return bool(re.search(r"\breferences\b|citation|\bcite\b|\.ris\b|format=refman|bibtex|endnote", text))
+
     def select_publisher_institution(page):
         """Follow publisher's organization SSO prompt (Elsevier, IEEE, Springer, etc.) for the configured VNU account."""
         try:
@@ -776,6 +780,8 @@ def _run_sync_vnu(doi: str, output_filename: str, progress_callback=None, status
                     if "full text" in label or "full-text" in lowered:
                         score += 2
                     if any(w in label or w in lowered for w in ("purchase", "buy", "order", "rent", "cart", "pricing", "subscribe", "checkout")):
+                        continue
+                    if is_citation_link(f"{label} {lowered}"):
                         continue
                     if score:
                         candidates.append((score, url))
@@ -1065,6 +1071,8 @@ def _run_sync_vnu(doi: str, output_filename: str, progress_callback=None, status
                         # "bỏ cái bấm cái nút purse pdf đi" -> Ignore Purchase PDF!
                         if any(w in combined for w in ("purchase", "buy", "order", "rent", "cart", "checkout", "subscribe", "pricing")):
                             continue
+                        if is_citation_link(combined):
+                            continue
                         if candidate.is_visible():
                             pdf_element = candidate
                             break
@@ -1215,7 +1223,15 @@ def _run_sync_vnu(doi: str, output_filename: str, progress_callback=None, status
             publisher_denied = any("denied" in result.lower() or "access denied" in result.lower()
                                    for result in attempt_results)
             publisher_forbidden = any(re.search(r"\b403\b", result) for result in attempt_results)
+            # A purchase offer after the institution round-trip means the
+            # subscription does not cover this article.
+            publisher_paywalled = not page.is_closed() and not has_fulltext_access(page) and visible(
+                page, 'a:has-text("Buy Chapter"), button:has-text("Buy Chapter"), a:has-text("Buy article"), '
+                      'button:has-text("Buy article"), a:has-text("Purchase PDF"), button:has-text("Purchase PDF")')
             close_browser_safely(browser)
+            if publisher_paywalled:
+                return False, ("PURCHASE_REQUIRED: Bài này phải mua, không thể tải xuống. "
+                               f"Gói VNU không bao gồm bài này; URL='{publisher_url}'.")
             return False, (
                 ("NO_ACCESS: " if publisher_denied or publisher_forbidden else "FAILED: ") +
                 f"\u0110\u00e3 v\u00e0o VNU nh\u01b0ng ch\u01b0a l\u1ea5y \u0111\u01b0\u1ee3c PDF. "
@@ -1423,6 +1439,10 @@ async def _auto_download_paper(doi: str, output_filename: str, title="", progres
             if message.startswith("CANCELLED:"):
                 store.update(doi, "CANCELLED", message=message)
                 return False, message, "unavailable"
+            if message.startswith("PURCHASE_REQUIRED:"):
+                # The publisher confirmed this needs a purchase; skip the public search.
+                store.update(doi, "PURCHASE_REQUIRED", message=message)
+                return False, message, "purchase_required"
             prior = store.get(doi)["status"]
             final_state = prior if prior in ("CAPTCHA_REQUIRED", "MFA_REQUIRED", "LOGIN_REQUIRED") else ("NO_ACCESS" if message.startswith("NO_ACCESS:") else "FAILED")
         else:

@@ -58,7 +58,10 @@ def has_fulltext_access(page):
         marker = page.get_by_text(re.compile(
             r"full[- ]text access|full access|open access|you have (?:full )?access|access provided by|subscribed content",
             re.I))
-        if any(marker.nth(i).is_visible() for i in range(min(marker.count(), 10))):
+        # Footer/navigation links such as Springer's "Open access publishing"
+        # describe the publisher, not this article's access.
+        if any(marker.nth(i).is_visible() and marker.nth(i).evaluate("e => !e.closest('a, nav, header, footer')")
+               for i in range(min(marker.count(), 10))):
             return True
 
         # 2. Check if a non-purchase PDF download button is already visible and ready to use

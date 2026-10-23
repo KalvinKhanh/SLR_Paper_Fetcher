@@ -25,11 +25,137 @@
             background-color: #F8FAFC;
             overflow-x: hidden;
         }
+        .dropdown-scroll { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, .7) transparent; }
+        .dropdown-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
+        .dropdown-scroll::-webkit-scrollbar-track { background: transparent; }
+        .dropdown-scroll::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(148, 163, 184, .7); }
+        .dropdown-scroll::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, .85); }
         .custom-shadow {
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
         }
         .pulse-loading {
             animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        #resultsSection .results-table {
+            table-layout: fixed;
+        }
+        #resultsSection .results-table th:nth-child(1),
+        #resultsSection .results-table tbody .result-row > td:nth-child(1) {
+            width: 22%;
+            overflow-wrap: anywhere;
+        }
+        #resultsSection .results-table th:nth-child(2),
+        #resultsSection .results-table tbody .result-row > td:nth-child(2) {
+            width: 43%;
+            overflow-wrap: anywhere;
+        }
+        #resultsSection .results-table th:nth-child(3),
+        #resultsSection .results-table tbody .result-row > td:nth-child(3) {
+            width: 15%;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+        #resultsSection .results-table th:nth-child(4),
+        #resultsSection .results-table tbody .result-row > td:nth-child(4) {
+            width: 20%;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+        #resultsSection .result-actions {
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+        #resultsSection .result-controls {
+            display: flex;
+            width: 100%;
+            min-width: 0;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+        #resultsSection .result-action-status {
+            display: flex !important;
+            flex: 1 1 12rem;
+            min-width: 0;
+            max-width: 100%;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0 !important;
+            white-space: normal;
+        }
+        #resultsSection .result-controls > button {
+            flex: 0 0 auto;
+        }
+        #resultsSection .result-controls a {
+            overflow-wrap: anywhere;
+        }
+        @media (max-width: 1023px) {
+            #resultsSection .results-table-wrap {
+                overflow: visible;
+            }
+            #resultsSection .results-table {
+                display: block;
+                width: 100%;
+                min-width: 0;
+            }
+            #resultsSection .results-table thead {
+                display: none;
+            }
+            #resultsSection .results-table tbody {
+                display: grid;
+                gap: 0.75rem;
+                padding: 0.75rem;
+            }
+            #resultsSection .results-table tbody > tr:not(.result-row) {
+                display: block;
+                min-width: 0;
+            }
+            #resultsSection .results-table tbody > tr:not(.result-row) > td {
+                display: block;
+                width: 100%;
+                white-space: normal;
+                overflow-wrap: anywhere;
+            }
+            #resultsSection .result-row {
+                display: grid;
+                min-width: 0;
+                border: 1px solid #e2e8f0;
+                border-radius: 0.75rem;
+                background: #fff;
+                overflow: hidden;
+            }
+            #resultsSection .result-row > td {
+                display: block;
+                min-width: 0;
+                padding: 0.75rem 0.875rem;
+                border: 0;
+                white-space: normal;
+                text-align: left;
+                overflow-wrap: anywhere;
+            }
+            #resultsSection .results-table tbody .result-row > td[data-label] {
+                width: 100%;
+            }
+            #resultsSection .result-row > td + td {
+                border-top: 1px solid #f1f5f9;
+            }
+            #resultsSection .result-row > td[data-label]::before {
+                display: block;
+                margin-bottom: 0.25rem;
+                color: #64748b;
+                font-size: 0.6875rem;
+                font-weight: 600;
+                line-height: 1rem;
+                content: attr(data-label);
+            }
+            #resultsSection .result-actions button {
+                min-height: 2.75rem;
+            }
+            #resultsSection .result-controls {
+                justify-content: flex-start;
+            }
         }
         @keyframes pulse {
             0%, 100% { opacity: 1; }
@@ -87,6 +213,10 @@
                             </div>
                             <span>Kho bài & Upload</span>
                             <span id="navDownloadedBadge" class="ml-auto bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded-full font-bold">...</span>
+                        </a>
+                        <a href="/analysis" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100/70">
+                            <span class="w-7 h-7 rounded-lg flex items-center justify-center bg-slate-100 text-slate-500">✦</span>
+                            <span>AI phân tích</span>
                         </a>
                     </nav>
                 </div>
@@ -266,8 +396,8 @@
                     <button onclick="clearResults()" class="text-xs text-slate-400 hover:text-slate-600 px-2 py-1 font-medium">Xóa bảng</button>
                 </div>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm text-slate-600">
+            <div class="results-table-wrap overflow-x-auto">
+                <table class="results-table w-full text-left text-sm text-slate-600">
                     <thead class="bg-slate-50 border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                         <tr>
                             <th class="p-4 w-72 min-w-[240px]">Tên file lưu</th>
@@ -392,7 +522,7 @@
                                 </div>
 
                                 <!-- Projects List -->
-                                <div id="projectDropdownList" class="max-h-72 overflow-y-auto py-1 space-y-1 pr-1">
+                                <div id="projectDropdownList" class="dropdown-scroll max-h-72 overflow-y-auto py-1 space-y-1 pr-1">
                                     <!-- Dynamic items -->
                                 </div>
 
@@ -858,10 +988,37 @@
             return node;
         }
 
+        const FAILURE_STATES = new Set(['PURCHASE_REQUIRED', 'NO_ACCESS', 'FAILED', 'CAPTCHA_REQUIRED', 'MFA_REQUIRED', 'LOGIN_REQUIRED', 'INVALID_PDF']);
+
+        function renderDownloadFailure(cell, index, state, message, openUrl) {
+            cell.replaceChildren();
+            cell.title = message || '';
+            const openLink = document.createElement('a');
+            openLink.href = safeWebUrl(openUrl || currentResults[index]?.resolved_url || currentResults[index]?.vnu_link) || '#';
+            openLink.target = '_blank';
+            openLink.rel = 'noopener noreferrer';
+            openLink.textContent = 'Mở web';
+            if (state === 'PURCHASE_REQUIRED') {
+                // A paid-only article is an expected outcome, not a download error.
+                cell.className = 'inline-block mr-2 text-xs whitespace-normal max-w-xs';
+                const badge = element('span', '', 'inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium');
+                badge.innerHTML = '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>';
+                badge.append('Bài phải mua · không tải được');
+                openLink.className = 'ml-2 text-slate-500 underline underline-offset-2 hover:text-blue-700';
+                cell.append(badge, openLink);
+                return;
+            }
+            cell.className = 'inline-block mr-2 text-xs text-amber-700 whitespace-normal max-w-xs';
+            const retryRowBtn = element('button', 'Thử lại', 'inline-flex items-center gap-1 mr-2 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500 hover:bg-amber-600 text-white transition-all shadow-sm');
+            retryRowBtn.onclick = () => downloadAllOA([index]);
+            openLink.className = 'font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-900';
+            cell.append(retryRowBtn, element('span', 'Chưa tải được tự động. '), openLink);
+        }
+
         function stateLabel(state) {
             return ({PENDING: 'Chờ tải', PROCESSING: 'Đang xử lý', OPEN_ACCESS: 'Có nguồn Open Access',
                 LOGIN_REQUIRED: 'Cần đăng nhập VNU', AUTHENTICATED: 'Đã đăng nhập', SESSION_EXPIRED: 'Phiên đã hết hạn',
-                INSTITUTION_ACCESS: 'Có quyền toàn văn', NO_ACCESS: 'Chưa có quyền toàn văn', MFA_REQUIRED: 'Cần xác minh MFA',
+                INSTITUTION_ACCESS: 'Có quyền toàn văn', NO_ACCESS: 'Chưa có quyền toàn văn', PURCHASE_REQUIRED: 'Phải mua bài', MFA_REQUIRED: 'Cần xác minh MFA',
                 CAPTCHA_REQUIRED: 'Cần xác minh trong trình duyệt', INVALID_DOI: 'DOI không hợp lệ', INVALID_PDF: 'PDF thiếu hoặc không hợp lệ',
                 RESOLUTION_FAILED: 'Chưa resolve được DOI', DOWNLOADED: 'Đã tải', FAILED: 'Chưa tải được', CANCELLED: 'Đã gián đoạn'})[state] || state;
         }
@@ -891,7 +1048,7 @@
             }
 
             if (visibleItems.length === 0) {
-                const emptyTr = document.createElement('tr');
+                const emptyTr = element('tr', '', 'result-empty-row');
                 const emptyTd = document.createElement('td');
                 emptyTd.colSpan = 4;
                 emptyTd.className = 'p-8 text-center text-slate-400 text-xs';
@@ -911,9 +1068,11 @@
                 tbody.appendChild(emptyTr);
             } else {
                 visibleItems.forEach(({ item: res, originalIndex: index }) => {
-                    const tr = element('tr', '', 'hover:bg-slate-50/70 transition-colors');
+                    const tr = element('tr', '', 'result-row hover:bg-slate-50/70 transition-colors');
                     const name = element('td', res.custom_name, 'p-4 align-top font-mono text-xs break-all text-slate-700');
                     const info = element('td', '', 'p-4 align-top');
+                    name.dataset.label = 'Tên tệp';
+                    info.dataset.label = 'Bài báo';
                     
                     const provider = getPaperProvider(res);
                     const isFav = isInterestedSource(res);
@@ -940,29 +1099,39 @@
                         
                     const code = res.already_exists ? 'DOWNLOADED' : res.state || res.status;
                     const state = element('td', stateLabel(code), 'p-4 align-top text-xs whitespace-nowrap');
+                    state.dataset.label = 'Trạng thái';
                     state.dataset.state = code;
                     state.id = `state-cell-${index}`;
                     state.title = res.message || '';
                     const actions = element('td', '', 'p-4 align-top text-right whitespace-nowrap');
+                    actions.classList.add('result-actions');
+                    actions.dataset.label = 'Thao tác';
                     const cell = element('div', '', 'inline-block mr-2 text-xs');
                     cell.id = `action-cell-${index}`;
-                    if (res.doi) {
+                    // Show the saved failure instead of a fresh download button.
+                    const savedFailure = res.doi && !res.already_exists && FAILURE_STATES.has(res.state);
+                    if (savedFailure) {
+                        renderDownloadFailure(cell, index, res.state, res.message, res.resolved_url);
+                    } else if (res.doi) {
                         const download = element('button', res.already_exists ? 'Đã tải' : 'Tải tự động', 'bg-blue-600 text-white px-3 py-2 rounded-lg font-medium shadow-sm hover:bg-blue-700 transition-colors');
                         download.onclick = res.already_exists ? openFolder : () => downloadAllOA([index]);
                         cell.append(download);
                     }
                     const url = safeWebUrl(res.resolved_url || res.oa_landing || res.vnu_link || res.oa_link);
-                    if (url) {
+                    if (url && !savedFailure) {
                         const link = element('a', 'Mở trang bài báo', 'ml-2 text-blue-700 hover:underline font-medium');
                         link.href = url;
                         link.target = '_blank';
                         link.rel = 'noopener noreferrer';
                         cell.append(link);
                     }
+                    cell.classList.add('result-action-status');
                     const ris = element('button', 'RIS', 'bg-violet-50 hover:bg-violet-100 text-violet-700 px-3 py-2 rounded-lg text-xs font-medium transition-colors');
                     ris.id = `ris-btn-${index}`;
                     ris.onclick = () => exportSingleRIS(index);
-                    actions.append(cell, ris);
+                    const controls = element('div', '', 'result-controls');
+                    controls.append(cell, ris);
+                    actions.append(controls);
                     tr.append(name, info, state, actions);
                     tbody.append(tr);
                 });
@@ -1002,7 +1171,8 @@
                 candidateList = candidateList.filter(({ index }) => selectedIndexes.includes(index));
             }
             
-            const itemsToDownload = candidateList.filter(({ item }) => !item.already_exists && item.doi && item.doi.startsWith('10.'));
+            const itemsToDownload = candidateList.filter(({ item }) => !item.already_exists && item.doi && item.doi.startsWith('10.')
+                && (Array.isArray(selectedIndexes) || item.state !== 'PURCHASE_REQUIRED'));
             if (!itemsToDownload.length) {
                 return alert('Đã có sẵn tất cả file hợp lệ hoặc không có DOI để tải trong danh mục này.');
             }
@@ -1156,30 +1326,21 @@
                                     cell.className = 'text-xs font-medium text-emerald-700';
                                 } else {
                                     failCount++;
-                                    cell.textContent = `T\u1ea3i t\u1ef1 \u0111\u1ed9ng th\u1ea5t b\u1ea1i: ${result.message || 'Kh\u00f4ng r\u00f5 l\u00fd do'}`;
-                                    cell.replaceChildren();
-                                    cell.className = 'text-xs text-amber-700 whitespace-normal max-w-xs';
-                                    cell.title = result.message || '';
-                                    document.getElementById(`state-cell-${index}`).textContent = stateLabel(result.state || 'FAILED');
-                                    document.getElementById(`state-cell-${index}`).dataset.state = result.state || 'FAILED';
-                                    const status = document.createElement('span');
-                                    status.textContent = 'Chưa tải được tự động. ';
-                                    const retryRowBtn = element('button', 'Thử lại', 'inline-flex items-center gap-1 mr-2 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500 hover:bg-amber-600 text-white transition-all shadow-sm');
-                                    retryRowBtn.onclick = () => downloadAllOA([index]);
-                                    const openLink = document.createElement('a');
-                                    openLink.href = safeWebUrl(result.open_url || currentResults[index]?.vnu_link) || '#';
-                                    openLink.target = '_blank';
-                                    openLink.rel = 'noopener noreferrer';
-                                    openLink.textContent = 'Mở web';
-                                    openLink.className = 'font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-900';
-
-                                    cell.append(retryRowBtn, status, openLink);
+                                    const failedState = result.state || 'FAILED';
+                                    document.getElementById(`state-cell-${index}`).textContent = stateLabel(failedState);
+                                    document.getElementById(`state-cell-${index}`).dataset.state = failedState;
+                                    document.getElementById(`state-cell-${index}`).title = result.message || '';
+                                    currentResults[index].state = failedState;
+                                    currentResults[index].message = result.message || '';
+                                    renderDownloadFailure(cell, index, failedState, result.message, result.open_url);
                                 }
                             } else if (result.success) {
                                 successCount++;
                                 currentResults[index].already_exists = true;
                             } else {
                                 failCount++;
+                                currentResults[index].state = event.result.state || 'FAILED';
+                                currentResults[index].message = event.result.message || '';
                             }
                             processedCount = event.completed;
                             oaDone = event.oa_done;
@@ -1197,7 +1358,7 @@
                 }
                 if (!streamFinished || processedCount !== itemsToDownload.length) throw new Error('Kết nối bị ngắt; khôi phục danh sách để xem các bài đã hoàn tất');
                 downloadBusy = false;
-                const remainingFails = currentResults.filter(item => !item.already_exists && item.doi && item.doi.startsWith('10.')).length;
+                const remainingFails = currentResults.filter(item => !item.already_exists && item.doi && item.doi.startsWith('10.') && item.state !== 'PURCHASE_REQUIRED').length;
                 if (remainingFails > 0) {
                     btn.className = 'text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-md cursor-pointer ring-2 ring-amber-400/50';
                     btn.disabled = false;

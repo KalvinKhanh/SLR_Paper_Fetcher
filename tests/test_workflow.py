@@ -113,6 +113,29 @@ class WorkflowTests(unittest.TestCase):
         response = self.client.post("/api/export-ris", json={"items": [{"title": "Article"}], "filename": "../bad"})
         self.assertEqual(response.status_code, 400)
 
+    def test_legacy_ai_draft_remains_readable_without_fabricated_aif(self):
+        store = get_store()
+        store.update(DOI, "DOWNLOADED")
+        store.save_analysis(DOI, "DONE", provider="ollama", model="old-model", draft={
+            "doi": DOI, "analysis": {"summary": "Existing saved draft"}})
+        response = self.client.get("/api/analysis/draft/" + DOI)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["analysis"]["draft"]["analysis"]["summary"], "Existing saved draft")
+        self.assertIsNone(response.json()["analysis"]["argumentation"])
+
+    def test_review_graph_exports_only_approved_propositions(self):
+        store = get_store()
+        store.update(DOI, "DOWNLOADED")
+        store.save_argumentation(DOI, {"id": "run-current", "provider": "ollama", "model": "model",
+            "document": {"metadata": {}, "sections": []}, "propositions": [{"id": "p-approved",
+                "text": "Approved finding", "proposition_type": "finding", "argumentative_roles": ["evidence"],
+                "source_quote": "Approved finding", "review_status": "pending", "provenance": {}}],
+            "relations": [], "graph": {"nodes": [], "edges": []}, "validation": {"valid": True}})
+        store.review_analysis_item(DOI, "p-approved", "proposition", "approved")
+        result = self.client.get("/api/analysis/review-graph").json()
+        self.assertTrue(result["includedStudyFilter"] is False)
+        self.assertEqual([node["metadata"]["paperId"] for node in result["AIF"]["nodes"]], [DOI])
+
     def test_focus_verification_requests_live_browser_tab(self):
         with patch("app.browser_worker.request_focus_verification", return_value=True) as focus:
             response = self.client.post("/api/focus-verification")

@@ -25,16 +25,69 @@ from paper_store import get_store
 from doi_resolver import resolve_doi
 from browser_session import browser_manager, browser_worker
 
+_ANALYSIS_QUEUE = None
+_ANALYSIS_WORKER = None
+_BROWSER_START_TASK = None
+_UI_OPEN_TASK = None
+
+
+async def _analysis_worker():
+    while True:
+        doi, provider = await _ANALYSIS_QUEUE.get()
+        store = get_store()
+        try:
+            store.save_analysis(doi, "PROCESSING", provider=provider, stage="starting")
+            paper = store.get(doi)
+            metadata = json.loads((paper or {}).get("metadata") or "{}")
+            from ai_analysis import analyze_pdf
+            def report_stage(stage):
+                store.update_analysis_stage(doi, stage)
+            result, model = await asyncio.to_thread(
+                analyze_pdf, doi, paper["file_path"], provider, report_stage
+            )
+            result["argumentation"]["document"]["metadata"].update({
+                "paper_title": metadata.get("title") or doi,
+                "filename": paper.get("filename") or "",
+            })
+            await asyncio.to_thread(store.save_argumentation, doi, result["argumentation"])
+            store.save_analysis(
+                doi, "DONE", provider=provider, model=model,
+                draft={**result, "paper": {
+                    "title": metadata.get("title") or doi,
+                    "filename": paper.get("filename") or "",
+                }}, stage="completed",
+            )
+        except Exception as exc:
+            store.save_analysis(doi, "FAILED", provider=provider, error=str(exc)[:500], stage="failed")
+        finally:
+            _ANALYSIS_QUEUE.task_done()
+
 @asynccontextmanager
 async def lifespan(app):
+    global _ANALYSIS_QUEUE, _ANALYSIS_WORKER, _BROWSER_START_TASK, _UI_OPEN_TASK
     get_store()
-    try:
-        await browser_manager.start()
-        if settings.AUTO_OPEN_BROWSER:
-            async def open_ui():
-                import urllib.request
-                url = f"http://{settings.APP_HOST}:{settings.APP_PORT}"
-                health_url = f"{url}/api/health"
+    _ANALYSIS_QUEUE = asyncio.Queue()
+    for analysis in await asyncio.to_thread(get_store().list_analyses):
+        if analysis["status"] == "PENDING":
+            _ANALYSIS_QUEUE.put_nowait((analysis["doi"], analysis.get("provider") or "ollama"))
+        elif analysis["status"] == "PROCESSING":
+            get_store().save_analysis(analysis["doi"], "FAILED", provider=analysis.get("provider"), error="App đã khởi động lại khi đang phân tích. Hãy thử lại.")
+    _ANALYSIS_WORKER = asyncio.create_task(_analysis_worker())
+    async def start_browser():
+        try:
+            await browser_manager.start()
+        except Exception as e:
+            print(f"[BROWSER] Warning: Could not start browser at startup: {e}")
+
+    # Browser/profile startup can take a while or fail independently of the web
+    # app. Keep it out of ASGI startup so the UI and API remain available.
+    _BROWSER_START_TASK = asyncio.create_task(start_browser())
+    if settings.AUTO_OPEN_BROWSER:
+        async def open_ui():
+            import urllib.request
+            url = f"http://{settings.APP_HOST}:{settings.APP_PORT}"
+            health_url = f"{url}/api/health"
+            try:
                 ready = False
                 for _ in range(30):
                     await asyncio.sleep(0.5)
@@ -47,17 +100,32 @@ async def lifespan(app):
                             break
                     except Exception:
                         continue
-                if ready and browser_manager.anchor and not browser_manager.anchor.is_closed():
-                    try:
-                        print(f"[UI] Opening web interface in primary browser window: {url}")
-                        await browser_manager.run(browser_manager.anchor.goto, url)
-                        await browser_manager.run(browser_manager.anchor.bring_to_front)
-                    except Exception:
-                        pass
-            asyncio.create_task(open_ui())
-    except Exception as e:
-        print(f"[BROWSER] Warning: Could not start browser at startup: {e}")
+                if not ready:
+                    print("[UI] Warning: Web interface did not become ready; browser was not opened.")
+                    return
+
+                try:
+                    await asyncio.wait_for(asyncio.shield(_BROWSER_START_TASK), timeout=10)
+                except asyncio.TimeoutError:
+                    print("[BROWSER] Startup is taking longer than expected; opening the web interface directly.")
+
+                if browser_manager.anchor and not browser_manager.anchor.is_closed():
+                    print(f"[UI] Opening web interface in primary browser window: {url}")
+                    await browser_manager.run(browser_manager.anchor.goto, url)
+                    await browser_manager.run(browser_manager.anchor.bring_to_front)
+                else:
+                    await asyncio.to_thread(webbrowser.open, url)
+            except Exception as e:
+                print(f"[UI] Warning: Could not open web interface automatically: {e}")
+        _UI_OPEN_TASK = asyncio.create_task(open_ui())
     yield
+    for task in (_UI_OPEN_TASK, _BROWSER_START_TASK):
+        if task and not task.done():
+            task.cancel()
+    await asyncio.gather(*[task for task in (_UI_OPEN_TASK, _BROWSER_START_TASK) if task], return_exceptions=True)
+    if _ANALYSIS_WORKER:
+        _ANALYSIS_WORKER.cancel()
+        await asyncio.gather(_ANALYSIS_WORKER, return_exceptions=True)
     browser_manager.request_shutdown()
     if _DOWNLOAD_JOBS:
         await asyncio.gather(*list(_DOWNLOAD_JOBS), return_exceptions=True)
@@ -106,6 +174,270 @@ async def upload_page(request: Request):
         "vnu_configured": bool(settings.VNU_LIBRARY_ID and settings.VNU_LIBRARY_PASSWORD),
         "active_tab": "upload"
     })
+
+
+@app.get("/analysis", response_class=HTMLResponse)
+async def analysis_page(request: Request):
+    return templates.TemplateResponse(request=request, name="analysis.html", context={})
+
+
+@app.get("/api/analysis/papers")
+async def analysis_papers():
+    store = get_store()
+    records = await asyncio.to_thread(store.list, 2000)
+    analyses = {row["doi"]: row for row in await asyncio.to_thread(store.list_analyses)}
+    papers = []
+    for record in records:
+        if record["status"] != "DOWNLOADED" or not record.get("file_path") or not valid_pdf_file(record["file_path"]):
+            continue
+        try:
+            metadata = json.loads(record.get("metadata") or "{}")
+        except (TypeError, ValueError):
+            metadata = {}
+        analysis = analyses.get(record["doi"], {})
+        papers.append({
+            "doi": record["doi"], "title": metadata.get("title") or record["doi"],
+            "filename": record.get("filename") or "", "provider": record.get("provider") or "",
+            "analysis_status": analysis.get("status", "NOT_STARTED"),
+            "analysis_provider": analysis.get("provider") or "",
+            "analysis_model": analysis.get("model") or "",
+            "analysis_error": analysis.get("error") or "",
+            "analysis_stage": analysis.get("stage") or "",
+            "updated_at": analysis.get("updated_at") or "",
+        })
+    return {"papers": papers, "total": len(papers)}
+
+
+@app.get("/api/analysis/config")
+async def analysis_config():
+    def reachable(url):
+        try:
+            return requests.get(url, timeout=2).status_code == 200
+        except requests.RequestException:
+            return False
+    grobid_ready, ollama_ready = await asyncio.gather(
+        asyncio.to_thread(reachable, f"{settings.GROBID_URL}/api/isalive"),
+        asyncio.to_thread(reachable, f"{settings.OLLAMA_URL}/api/tags"),
+    )
+    return {
+        "default_provider": settings.AI_DEFAULT_PROVIDER if settings.AI_DEFAULT_PROVIDER in {"ollama", "gemini"} and (settings.AI_DEFAULT_PROVIDER != "gemini" or settings.GEMINI_API_KEY) else "ollama",
+        "ollama_model": settings.OLLAMA_MODEL,
+        "gemini_model": settings.GEMINI_MODEL,
+        "gemini_configured": bool(settings.GEMINI_API_KEY),
+        "grobid_ready": grobid_ready,
+        "ollama_ready": ollama_ready,
+    }
+
+
+@app.get("/api/analysis/draft/{doi:path}")
+async def analysis_draft(doi: str):
+    normalized = extract_doi(doi)
+    if not normalized:
+        return JSONResponse({"error": "Invalid DOI."}, status_code=400)
+    record = await asyncio.to_thread(get_store().get_analysis, normalized)
+    if not record or record.get("status") != "DONE" or not record.get("draft"):
+        return JSONResponse({"error": "No completed analysis draft is available."}, status_code=404)
+    try:
+        record["draft"] = json.loads(record["draft"])
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "The saved analysis draft has an invalid format."}, status_code=500)
+    argumentation = await asyncio.to_thread(get_store().get_argumentation, normalized)
+    record["argumentation"] = argumentation
+    return {"analysis": record}
+
+
+@app.post("/api/analysis/review/{doi:path}")
+async def review_analysis_item(doi: str, request: Request):
+    normalized = extract_doi(doi)
+    if not normalized:
+        return JSONResponse({"error": "Invalid DOI."}, status_code=400)
+    body = await request.json()
+    try:
+        accepted = await asyncio.to_thread(get_store().review_analysis_item, normalized,
+            str(body.get("item_id") or ""), str(body.get("item_type") or ""),
+            str(body.get("decision") or ""), str(body.get("note") or ""))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    if not accepted:
+        return JSONResponse({"error": "Analysis item not found for review."}, status_code=404)
+    return {"success": True}
+
+
+@app.patch("/api/analysis/edit/{doi:path}")
+async def edit_analysis_item(doi: str, request: Request):
+    normalized = extract_doi(doi)
+    if not normalized:
+        return JSONResponse({"error": "Invalid DOI."}, status_code=400)
+    body = await request.json()
+    try:
+        accepted = await asyncio.to_thread(get_store().edit_analysis_item, normalized,
+            str(body.get("item_id") or ""), str(body.get("item_type") or ""),
+            body.get("changes") or {}, str(body.get("note") or ""))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    if not accepted:
+        return JSONResponse({"error": "Analysis item not found for editing."}, status_code=404)
+    return {"success": True}
+
+
+@app.get("/api/analysis/export/{doi:path}")
+async def export_argumentation(doi: str):
+    normalized = extract_doi(doi)
+    if not normalized:
+        return JSONResponse({"error": "Invalid DOI."}, status_code=400)
+    run = await asyncio.to_thread(get_store().get_argumentation, normalized)
+    if not run:
+        return JSONResponse({"error": "No saved AIF graph is available."}, status_code=404)
+    graph = run["graph"]
+    nodes = [{"nodeID": node["id"], "type": node["node_type"], "text": node.get("text"),
+              "metadata": node.get("metadata", {})} for node in graph["nodes"]]
+    edges = [{"edgeID": edge["id"], "fromID": edge["source_node_id"], "toID": edge["target_node_id"]}
+             for edge in graph["edges"]]
+    return {"format": "AIF-compatible internal graph JSON", "run_id": run["id"],
+            "version": graph["version"], "provenance": {"provider": run.get("provider"),
+            "model": run.get("model"), "prompt_versions": run.get("prompt_versions")},
+            "AIF": {"nodes": nodes, "edges": edges}}
+
+
+@app.post("/api/analysis/cross-paper")
+async def analyze_cross_paper(request: Request):
+    body = await request.json()
+    provider = str(body.get("provider") or settings.AI_DEFAULT_PROVIDER or "ollama").strip().lower()
+    if provider not in {"ollama", "gemini"}:
+        return JSONResponse({"error": "Invalid AI provider."}, status_code=400)
+    if provider == "gemini" and not settings.GEMINI_API_KEY:
+        return JSONResponse({"error": "GEMINI_API_KEY is not configured in .env."}, status_code=400)
+    store = get_store()
+    propositions = await asyncio.to_thread(store.approved_propositions_for_synthesis)
+    if len({item["doi"] for item in propositions}) < 2:
+        return JSONResponse({"error": "At least two papers must have approved, source-quoted propositions."}, status_code=400)
+    from ai_analysis import PROMPT_VERSIONS, analyze_cross_paper_relationships
+    batch_id = __import__("uuid").uuid4().hex
+    await asyncio.to_thread(store.create_cross_paper_batch, batch_id, provider,
+                            PROMPT_VERSIONS["cross_paper_relationship_analysis"])
+    try:
+        relationships, model = await asyncio.to_thread(analyze_cross_paper_relationships, propositions, provider)
+        await asyncio.to_thread(store.complete_cross_paper_batch, batch_id, model, relationships)
+    except Exception as exc:
+        await asyncio.to_thread(store.fail_cross_paper_batch, batch_id, str(exc))
+        return JSONResponse({"error": str(exc)[:500], "batch_id": batch_id}, status_code=502)
+    return {"batch_id": batch_id, "candidate_count": len(relationships), "status": "DONE",
+            "human_review_required": True, "included_studies_filtered": False}
+
+
+@app.get("/api/analysis/cross-paper")
+async def list_cross_paper_relationships():
+    return await asyncio.to_thread(get_store().list_cross_paper_relationships)
+
+
+@app.post("/api/analysis/cross-paper/{relationship_id}/review")
+async def review_cross_paper_relationship(relationship_id: str, request: Request):
+    body = await request.json()
+    try:
+        accepted = await asyncio.to_thread(get_store().review_cross_paper_relationship, relationship_id,
+                                           str(body.get("decision") or ""), str(body.get("note") or ""))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    if not accepted:
+        return JSONResponse({"error": "Cross-paper relationship not found."}, status_code=404)
+    return {"success": True}
+
+
+@app.get("/api/analysis/review-graph")
+async def review_argument_graph():
+    store = get_store()
+    paper_graphs = await asyncio.to_thread(store.approved_argumentation_graphs)
+    cross = await asyncio.to_thread(store.list_cross_paper_relationships)
+    propositions = [item for graph in paper_graphs for item in graph["propositions"]]
+    by_id = {item["id"]: item for item in propositions}
+    nodes, edges, semantic_links = [], [], []
+    for paper in paper_graphs:
+        for node in paper["graph"]["nodes"]:
+            proposition = by_id.get(node.get("proposition_id"), {})
+            nodes.append({"nodeID": node["id"], "type": node["node_type"], "text": node.get("text"),
+                "metadata": {**node.get("metadata", {}), "paperId": paper["doi"],
+                    "propositionType": proposition.get("proposition_type"),
+                    "roles": proposition.get("argumentative_roles", []),
+                    "sourceQuote": proposition.get("source_quote"),
+                    "sourceOffsets": proposition.get("source_offsets"),
+                    "isInferred": proposition.get("is_inferred", False)}})
+        edges.extend({"edgeID": edge["id"], "fromID": edge["source_node_id"], "toID": edge["target_node_id"]}
+                     for edge in paper["graph"]["edges"])
+    known_node_ids = {node["nodeID"] for node in nodes}
+    approved_links = [item for item in cross["relationships"] if item["review_status"] == "approved" and not item["stale"]]
+    for item in approved_links:
+        source, target = by_id.get(item["source_proposition_id"]), by_id.get(item["target_proposition_id"])
+        if not source or not target or "i:" + source["id"] not in known_node_ids or "i:" + target["id"] not in known_node_ids:
+            continue
+        if item["relationship"] == "supports":
+            ra_id = "ra:cross:" + item["id"]
+            nodes.append({"nodeID": ra_id, "type": "RA", "text": "Cross-paper support",
+                          "metadata": {"relationshipId": item["id"], "explanation": item["explanation"],
+                                       "sourcePaperId": item["source_doi"], "targetPaperId": item["target_doi"],
+                                       "sourceQuote": item["source_quote"], "targetQuote": item["target_quote"],
+                                       "confidence": item["confidence"], "provenance": item["provenance"],
+                                       "reviewStatus": "approved"}})
+            edges.extend([{"edgeID": "e:cross:source:" + item["id"], "fromID": "i:" + source["id"], "toID": ra_id},
+                          {"edgeID": "e:cross:target:" + item["id"], "fromID": ra_id, "toID": "i:" + target["id"]}])
+        elif item["relationship"] == "contradicts":
+            ca_id = "ca:cross:" + item["id"]
+            nodes.append({"nodeID": ca_id, "type": "CA", "text": "Cross-paper rebuttal",
+                          "metadata": {"relationshipId": item["id"], "explanation": item["explanation"],
+                                       "sourcePaperId": item["source_doi"], "targetPaperId": item["target_doi"],
+                                       "sourceQuote": item["source_quote"], "targetQuote": item["target_quote"],
+                                       "confidence": item["confidence"], "provenance": item["provenance"],
+                                       "reviewStatus": "approved"}})
+            edges.extend([{"edgeID": "e:cross:source:" + item["id"], "fromID": "i:" + source["id"], "toID": ca_id},
+                          {"edgeID": "e:cross:target:" + item["id"], "fromID": ca_id, "toID": "i:" + target["id"]}])
+        else:
+            semantic_links.append({"id": item["id"], "sourceNodeId": "i:" + source["id"],
+                "targetNodeId": "i:" + target["id"], "relationship": item["relationship"],
+                "explanation": item["explanation"], "sourceQuote": item["source_quote"],
+                "targetQuote": item["target_quote"], "reviewStatus": "approved"})
+    from ai_analysis import validate_aif_graph
+    internal_graph = {"nodes": [{"id": node["nodeID"], "node_type": node["type"]} for node in nodes],
+                      "edges": [{"source_node_id": edge["fromID"], "target_node_id": edge["toID"]} for edge in edges]}
+    return {"format": "AIF-compatible internal review graph JSON", "version": {
+            "paperAnalysisRuns": sorted({graph["run_id"] for graph in paper_graphs}),
+            "crossPaperBatch": (cross.get("batch") or {}).get("id")},
+        "includedStudyFilter": False,
+        "validation": validate_aif_graph(internal_graph),
+        "AIF": {"nodes": nodes, "edges": edges}, "semanticLinks": semantic_links}
+
+
+@app.post("/api/analysis/enqueue")
+async def enqueue_analysis(request: Request):
+    body = await request.json()
+    provider = str(body.get("provider") or settings.AI_DEFAULT_PROVIDER or "ollama").strip().lower()
+    if provider not in {"ollama", "gemini"}:
+        return JSONResponse({"error": "Invalid AI provider."}, status_code=400)
+    if provider == "gemini" and not settings.GEMINI_API_KEY:
+        return JSONResponse({"error": "GEMINI_API_KEY is not configured in .env."}, status_code=400)
+    requested = body.get("dois") or []
+    if not isinstance(requested, list):
+        return JSONResponse({"error": "dois must be a list."}, status_code=400)
+    store = get_store()
+    if requested:
+        normalized_dois = {extract_doi(str(value)) for value in requested}
+        normalized_dois.discard("")
+        records = [await asyncio.to_thread(store.get, doi) for doi in normalized_dois]
+    else:
+        records = await asyncio.to_thread(store.list, 2000)
+    queued = []
+    skipped = []
+    for record in records:
+        if not record or record.get("status") != "DOWNLOADED" or not valid_pdf_file(record.get("file_path") or ""):
+            continue
+        doi = record["doi"]
+        accepted = await asyncio.to_thread(
+            store.try_queue_analysis, doi, provider, allow_done=bool(requested)
+        )
+        if not accepted:
+            skipped.append(doi)
+            continue
+        _ANALYSIS_QUEUE.put_nowait((doi, provider))
+        queued.append(doi)
+    return {"queued": queued, "skipped": skipped, "total": len(queued)}
 
 @app.get("/api/health")
 async def health():
@@ -306,7 +638,7 @@ async def process_dois(dois: str = Form(None), file: UploadFile = File(None)):
             if not doi or not doi.startswith("10."):
                 import hashlib
                 get_store().update("invalid:" + hashlib.sha256(raw_text.encode()).hexdigest(), "INVALID_DOI",
-                                   message="DOI không hợp lệ.")
+                                   message="Invalid DOI.")
                 return {"original": raw_text, "custom_name": item.get("custom_name") or "paper.pdf",
                         "title": item.get("custom_title") or raw_text, "status": "INVALID_DOI",
                         "oa_link": None, "vnu_link": None}
@@ -333,7 +665,14 @@ async def process_dois(dois: str = Form(None), file: UploadFile = File(None)):
                 custom_name = generate_standardized_filename(doi, item.get("custom_name"), title)
 
             record = get_store().get(doi) or {}
-            persistent_status = "DOWNLOADED" if saved else ("OPEN_ACCESS" if oa_link else record.get("status", "PENDING"))
+            prior_status = record.get("status", "PENDING")
+            if saved:
+                persistent_status = "DOWNLOADED"
+            elif prior_status in _KEPT_FAILURE_STATES:
+                # A re-scan must not erase why the last download attempt failed.
+                persistent_status = prior_status
+            else:
+                persistent_status = "OPEN_ACCESS" if oa_link else prior_status
             get_store().update(doi, persistent_status, filename=custom_name,
                                metadata={"title": title, "authors": item.get("custom_author") or "",
                                          "journal": item.get("custom_journal") or source or "", "year": item.get("custom_year") or ""})
@@ -343,6 +682,7 @@ async def process_dois(dois: str = Form(None), file: UploadFile = File(None)):
                 "journal": item.get("custom_journal") or source or "",
                 "authors": item.get("custom_author") or "", "year": item.get("custom_year") or "",
                 "status": status, "state": (get_store().get(doi) or {}).get("status", "PENDING"), "already_exists": bool(saved),
+                "message": None if saved else record.get("message"),
                 "download_method": record.get("source") if saved else None,
                 "resolved_url": resolution.get("resolved_url"), "provider": resolution.get("provider"),
                 "oa_link": oa_link, "oa_landing": oa_landing, "source": source,
@@ -396,6 +736,7 @@ async def download_file(url: str = Form(...), filename: str = Form(""), doi: str
     return JSONResponse({"success": False, "error": msg})
 
 _DOWNLOAD_JOBS = set()
+_KEPT_FAILURE_STATES = {"PURCHASE_REQUIRED", "NO_ACCESS", "FAILED", "CAPTCHA_REQUIRED", "MFA_REQUIRED", "LOGIN_REQUIRED", "INVALID_PDF"}
 
 
 @app.post("/api/download-all")
@@ -514,7 +855,7 @@ async def sync_recent_download(filename: str = Form(...), source_filename: str =
 async def auto_vnu_endpoint(doi: str = Form(...), filename: str = Form(...), title: str = Form("")):
     doi = extract_doi(doi)
     if not doi.startswith("10."):
-        return JSONResponse({"success": False, "error": "DOI không hợp lệ."}, status_code=400)
+        return JSONResponse({"success": False, "error": "Invalid DOI."}, status_code=400)
     try:
         if filename:
             filename = safe_filename(filename)
@@ -1022,10 +1363,26 @@ async def push_papers_to_slr(request: Request):
 def run_server():
     # Let shutdown reach lifespan even when a stream is awaiting a human.
     uvicorn.run("app:app", host=settings.APP_HOST, port=settings.APP_PORT, log_level="warning",
-                timeout_graceful_shutdown=10)
+                timeout_graceful_shutdown=10, reload=True, reload_dirs=[str(BASE_DIR)],
+                reload_includes=["*.py", "*.html", "*.css", "*.js"])
+
+def open_existing_server():
+    """Reuse the live local server instead of starting a competing reload process."""
+    url = f"http://{settings.APP_HOST}:{settings.APP_PORT}"
+    try:
+        response = requests.get(f"{url}/api/health", timeout=1)
+        if response.status_code != 200:
+            return False
+    except requests.RequestException:
+        return False
+    print(f"SLR Paper Fetcher is already running at {url}; opening the existing server.")
+    webbrowser.open(url)
+    return True
 
 if __name__ == "__main__":
     url = f"http://{settings.APP_HOST}:{settings.APP_PORT}"
+    if open_existing_server():
+        sys.exit(0)
     print(f"Starting backend server at {url}")
     # The UI is now opened directly inside the Playwright browser's anchor tab
     run_server()

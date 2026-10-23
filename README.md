@@ -17,6 +17,10 @@ On Windows, `run_app.bat` performs installation and starts the application from
 its own directory. Default address: `http://127.0.0.1:8543`.
 There is no Docker or external database requirement.
 
+The local server runs with automatic reload enabled. Keep its terminal open while
+editing Python, HTML, CSS or JavaScript files; the server restarts itself when
+one changes. Refresh the browser page to load updated UI templates.
+
 Keep the current `.env`; use `.env.example` only when creating a new setup.
 Provide a real contact email for Unpaywall/PMC, VNU library credentials, and
 an optional OpenAlex key. Automatic downloads do not use an Elsevier API key
@@ -93,6 +97,56 @@ When CAPTCHA appears, the app selects the live challenge tab in its browser
 window. The download row offers **Hiện tab xác minh** to bring that tab forward
 again while the article waits for manual verification.
 The application never solves or bypasses CAPTCHA/MFA. There is no Sci-Hub integration.
+
+## AI paper analysis
+
+Open **AI phân tích** to queue one downloaded PDF or all eligible PDFs. The
+worker sends each PDF to a GROBID service, then asks the selected provider for a
+structured review draft (summary, objective, method, data/population, topic,
+outcomes, findings, limitations, conclusion and review relevance). Drafts and
+queue states are stored in `data/papers.sqlite3`; use **Xem draft** to review a
+completed analysis. Existing drafts are skipped by **Phân tích tất cả**; an
+individual **Phân tích lại** reruns that paper.
+Each analysis also stores GROBID sections, source-grounded propositions, proposition
+types, CEW roles, candidate relations, reconstructed warrants, an AIF I/RA/CA graph,
+validation output and review decisions. Proposition extraction runs in section-aware
+12,000-character chunks. Every extracted quote must match the GROBID section text;
+unmatched model output is discarded. AI-generated propositions and links begin in
+`pending` review status. The paper detail modal has **Phân tích**, **Mệnh đề & nguồn**
+and **AIF Graph** tabs with source quotes, edit/review controls and internal JSON export.
+Older drafts remain readable and are not retrofitted with invented provenance or graphs.
+
+The pipeline uses versioned prompts: `scientific_proposition_extraction`,
+`argument_role_analysis`, `warrant_reconstruction`, and
+`cross_paper_relationship_analysis`. Section parsing, graph construction and graph
+validation are deterministic. Research questions/objectives remain contextual and
+are excluded from I-nodes; Claim and Evidence are proposition roles, not node types.
+Attack candidates keep their target type (undermine, undercut or rebut). Reconstructed
+warrants are separate inferred I-nodes with explanation, source proposition IDs,
+confidence, model and prompt version. Structural validation does not establish the
+scientific correctness of a proposition.
+
+Reviewers can compare propositions only after approving them individually. Cross-paper
+outputs are pending candidates with both source quotes and explicit application-level
+labels; a lexical shortlist only selects pairs to ask the model about. The review graph
+export combines approved propositions from each latest approved paper analysis with
+approved cross-paper relationships. Supports and contradicts become RA and CA structures;
+other labels remain explicit semantic links. This app has no Study Selection state, so
+the graph cannot filter propositions to included SLR studies.
+
+Additive SQLite tables in `paper_store.py` retain analysis runs, sections, propositions,
+argument relations, AIF nodes/edges, review history, and cross-paper candidates. Existing
+`paper_analyses` drafts are retained; no existing paper or review data is deleted. Export
+is the app's internal AIF-compatible graph JSON, not a claim of validated interoperable
+AIF/xAIF interchange conformance.
+
+This app reuses its existing `requests` and `lxml` dependencies; no additional
+Python package is required. GROBID and Ollama are separate local services and
+must be running. Configure `GROBID_URL`, `OLLAMA_URL` and `OLLAMA_MODEL` in
+`.env`; the default Ollama model is `qwen2.5:7b`. Ollama is selected by default.
+To use Gemini, set `GEMINI_API_KEY`; choose Gemini on the analysis page. The
+Gemini key is sent only in the server-side request and is never rendered in the
+page. Restart the app after changing these settings.
 
 ## Progress and resume
 

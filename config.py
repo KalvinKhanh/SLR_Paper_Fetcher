@@ -19,6 +19,14 @@ class Settings:
     SLR_PUBLIC_API_KEY: str = os.getenv("SLR_PUBLIC_API_KEY", "slr-public-upload-api-key-2026-secret").strip()
     SLR_DEFAULT_PROJECT_ID: str = os.getenv("SLR_DEFAULT_PROJECT_ID", "").strip()
 
+    # Local document analysis services. Ollama is the default AI provider.
+    GROBID_URL: str = os.getenv("GROBID_URL", "http://127.0.0.1:8070").rstrip("/")
+    AI_DEFAULT_PROVIDER: str = os.getenv("AI_DEFAULT_PROVIDER", "ollama").strip().lower()
+    OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b").strip()
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "").strip()
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+
     def refresh_api_credentials(self):
         """Apply .env API-key edits without retaining a previously loaded key."""
         values = dotenv_values(ENV_PATH) if ENV_PATH.exists() else {}

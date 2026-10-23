@@ -37,6 +37,7 @@ class BrowserManager:
 
         self.authenticated = False
         self.anchor = None
+        self._browser_cdp = None
         self.channel = None
         self.headless = True
         self.retained_pages = set()
@@ -81,10 +82,36 @@ class BrowserManager:
             print(f"[ARTICLE]\nContinuing SAME page\npage_id={pid}")
             return self.current_article_page
 
-        self.current_article_page = context.new_page()
+        self.current_article_page = self._new_work_page(context)
         pid = self.get_page_id(self.current_article_page)
         print(f"[PAGE]\nArticle page created\npage_id={pid}")
         return self.current_article_page
+
+    def _new_work_page(self, context):
+        """Open a download tab in its own background window, never in the app UI window."""
+        try:
+            if self._browser_cdp is None:
+                self._browser_cdp = self.browser.new_browser_cdp_session()
+            with context.expect_page(timeout=10000) as info:
+                self._browser_cdp.send("Target.createTarget", {"url": "about:blank", "newWindow": True, "background": True})
+            return info.value
+        except Exception:
+            self._browser_cdp = None
+            return context.new_page()
+
+    def _window_id(self, page):
+        window_id = getattr(page, "_runtime_window_id", None)
+        if window_id is None:
+            session = self.context.new_cdp_session(page)
+            try:
+                window_id = session.send("Browser.getWindowForTarget")["windowId"]
+            finally:
+                session.detach()
+            try:
+                setattr(page, "_runtime_window_id", window_id)
+            except Exception:
+                pass
+        return window_id
 
     def get_auth_page(self):
         """Get or reuse the authentication tab in the SAME context. Does not launch a browser."""
@@ -96,7 +123,7 @@ class BrowserManager:
                 pass
             return self.auth_page
 
-        self.auth_page = context.new_page()
+        self.auth_page = self._new_work_page(context)
         pid = self.get_page_id(self.auth_page)
         print(f"[PAGE]\nAuth page created\npage_id={pid}")
         return self.auth_page
@@ -198,12 +225,22 @@ class BrowserManager:
         if not self.context:
             return []
         
+        app_window = None
+        if self.anchor and not self.anchor.is_closed():
+            try:
+                app_window = self._window_id(self.anchor)
+            except Exception:
+                pass
+
         def is_ui_tab(p):
             if p is self.anchor:
                 return True
             try:
                 url = p.url or ""
-                return f":{settings.APP_PORT}" in url or "127.0.0.1:" in url or "localhost:" in url
+                if f":{settings.APP_PORT}" in url or "127.0.0.1:" in url or "localhost:" in url:
+                    return True
+                # Tabs the user opened in the app window are not download pages.
+                return app_window is not None and self._window_id(p) == app_window
             except Exception:
                 return False
 
@@ -351,6 +388,7 @@ class BrowserManager:
             self.context = self.browser = self.playwright = None
             self.authenticated = False
             self.anchor = None
+            self._browser_cdp = None
             self.current_article_page = None
             self.auth_page = None
             self.retained_pages.clear()
