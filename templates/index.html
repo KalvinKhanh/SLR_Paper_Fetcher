@@ -31,10 +31,35 @@
         .dropdown-scroll::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(148, 163, 184, .7); }
         .dropdown-scroll::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, .85); }
         .custom-shadow {
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.02);
+            box-shadow: none;
         }
         .pulse-loading {
             animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        button, a[role="button"] {
+            transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1), background-color 160ms ease, color 160ms ease, border-color 160ms ease, opacity 160ms ease;
+        }
+        button:active:not(:disabled) {
+            transform: scale(0.97);
+        }
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            max-width: 100%;
+            padding: 0.2rem 0.5rem;
+            border: 1px solid transparent;
+            border-radius: 0.375rem;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            line-height: 1rem;
+            white-space: normal;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            button, a[role="button"], .pulse-loading, .animate-spin, .animate-pulse {
+                animation: none !important;
+                transition: none !important;
+                transform: none !important;
+            }
         }
         #resultsSection .results-table {
             table-layout: fixed;
@@ -162,117 +187,22 @@
             50% { opacity: .4; }
         }
     </style>
+  <script src="/static/js/sidebar.js" defer></script>
 </head>
 <body class="text-slate-800 w-full min-w-full min-h-screen flex flex-col md:flex-row bg-slate-50 overflow-x-hidden">
 
     <!-- Mobile Overlay -->
-    <div id="sidebarOverlay" onclick="toggleMobileSidebar()" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-20 hidden md:hidden transition-opacity"></div>
-
-    <!-- Left Sidebar Navigation -->
-    <aside id="sidebar" class="fixed md:sticky top-0 left-0 w-64 xl:w-72 bg-white border-r border-slate-200/90 flex flex-col shrink-0 h-screen z-30 transition-transform duration-300 -translate-x-full md:translate-x-0 custom-shadow md:shadow-none">
-        <!-- Brand Header -->
-        <div class="h-16 px-5 border-b border-slate-100 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-extrabold shadow-md shadow-blue-500/20 text-base">
-                    P
-                </div>
-                <div>
-                    <span class="font-bold text-base tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">SLR Fetcher</span>
-                    <span class="text-[10px] block text-slate-400 -mt-0.5 font-medium">Systematic Review Tool</span>
-                </div>
-            </div>
-            <!-- Mobile Close Button -->
-            <button onclick="toggleMobileSidebar()" class="md:hidden text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-            </button>
-        </div>
-
-        <!-- Navigation Menu -->
-        <div class="flex-1 py-5 px-3 flex flex-col justify-between overflow-y-auto">
-            <div class="space-y-6">
-                <!-- Main Nav Group -->
-                <div>
-                    <p class="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Chức năng chính</p>
-                    <nav class="space-y-1.5">
-                        <!-- Tab 1: Fetch & Download -->
-                        <a href="/" onclick="switchTab(event, 'fetch')" id="navTabFetch" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all {% if active_tab == 'fetch' or not active_tab %}bg-blue-50 text-blue-700 shadow-sm shadow-blue-500/5 font-bold border border-blue-100/80{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100/70{% endif %}">
-                            <div id="navIconFetch" class="w-7 h-7 rounded-lg flex items-center justify-center {% if active_tab == 'fetch' or not active_tab %}bg-blue-600 text-white shadow-sm shadow-blue-500/20{% else %}bg-slate-100 text-slate-500{% endif %}">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                            </div>
-                            <span>Thu thập & Tải bài</span>
-                            <span id="scanRunningBadge" class="hidden ml-auto flex items-center gap-1 bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                                <span class="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
-                                <span>Đang quét</span>
-                            </span>
-                        </a>
-
-                        <!-- Tab 2: Selected Library & Upload -->
-                        <a href="/upload" onclick="switchTab(event, 'upload')" id="navTabUpload" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all {% if active_tab == 'upload' %}bg-indigo-50 text-indigo-700 shadow-sm shadow-indigo-500/5 font-bold border border-indigo-100/80{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100/70{% endif %}">
-                            <div id="navIconUpload" class="w-7 h-7 rounded-lg flex items-center justify-center {% if active_tab == 'upload' %}bg-indigo-600 text-white shadow-sm shadow-indigo-500/20{% else %}bg-slate-100 text-slate-500{% endif %}">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-                            </div>
-                            <span>Kho bài & Upload</span>
-                            <span id="navDownloadedBadge" class="ml-auto bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded-full font-bold">...</span>
-                        </a>
-                        <a href="/analysis" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100/70">
-                            <span class="w-7 h-7 rounded-lg flex items-center justify-center bg-slate-100 text-slate-500">✦</span>
-                            <span>AI phân tích</span>
-                        </a>
-                    </nav>
-                </div>
-
-                <!-- Utilities Group -->
-                <div>
-                    <p class="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Thao tác nhanh</p>
-                    <div class="space-y-1">
-                        <button onclick="restoreSavedResults()" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 transition-all text-left">
-                            <div class="w-7 h-7 rounded-lg flex items-center justify-center bg-slate-100 text-slate-500">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                            </div>
-                            <span>Khôi phục danh sách</span>
-                        </button>
-
-                        <button onclick="openFolder()" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 transition-all text-left">
-                            <div class="w-7 h-7 rounded-lg flex items-center justify-center bg-slate-100 text-slate-500">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
-                            </div>
-                            <span>Mở thư mục Downloads</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Bottom Institutional Card -->
-            <div class="mt-auto pt-4 border-t border-slate-100 space-y-3">
-                <div class="bg-slate-50 p-3 rounded-xl border border-slate-200/70 text-xs">
-                    <div class="flex items-center justify-between mb-1.5">
-                        <span class="font-semibold text-slate-700">VNU Library</span>
-                        {% if vnu_configured %}
-                        <span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Đã kết nối
-                        </span>
-                        {% else %}
-                        <span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
-                            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Chưa lưu
-                        </span>
-                        {% endif %}
-                    </div>
-                    <p class="text-[11px] text-slate-400">OpenAthens ĐHQG-HCM</p>
-                </div>
-
-                <div class="px-2 text-[10px] text-slate-400 font-medium text-center">
-                    SLR Paper Fetcher • ĐHQG-HCM
-                </div>
-            </div>
-        </div>
-    </aside>
+    {% set sidebar_active_tab = 'fetch' %}
+{% set sidebar_workspace_mode = true %}
+{% set sidebar_show_utilities = true %}
+{% include "components/sidebar.html" %}
 
     <!-- Main Content Area -->
     <div class="flex-1 flex flex-col min-w-0 min-h-screen overflow-y-auto">
         <!-- Top Action Bar -->
         <header class="h-16 border-b border-slate-200/80 bg-white/80 sticky top-0 z-20 backdrop-blur-md px-6 flex items-center justify-between">
             <div class="flex items-center gap-3">
-                <button onclick="toggleMobileSidebar()" class="md:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100">
+                <button onclick="toggleMobileSidebar()" aria-controls="sidebar" aria-expanded="false" data-sidebar-toggle class="md:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                 </button>
                 <div class="flex items-center gap-2 text-xs text-slate-500 font-medium">
@@ -295,19 +225,19 @@
         <div id="viewFetch" class="{% if active_tab == 'upload' %}hidden{% endif %}">
 
         <!-- Banner / Intro -->
-        <div class="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div class="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
-                <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Thu thập Full Text tài liệu SLR</h1>
-                <p class="text-slate-500 text-sm mt-1">Ưu tiên tìm bản Open Access miễn phí trên mạng. Nếu bị khóa (Paywalled) sẽ chuyển tiếp qua Cổng OpenAthens Thư viện ĐHQG-HCM.</p>
+                <h1 class="text-xl font-semibold text-slate-900 tracking-tight">Thu thập full text</h1>
+                <p class="text-slate-600 text-sm mt-1 max-w-3xl">Tìm PDF Open Access trước, rồi dùng phiên VNU/OpenAthens cho bài còn khóa. Mỗi bài báo cáo rõ đã tải, phải mua, hay cần xác minh.</p>
             </div>
         </div>
 
         <!-- Automatic download sources -->
-        <section class="mb-6 bg-white rounded-2xl border border-slate-200 custom-shadow p-5" aria-labelledby="autoSourcesTitle">
+        <section class="mb-6 bg-white rounded-xl border border-slate-200 p-5" aria-labelledby="autoSourcesTitle">
             <div class="flex flex-wrap items-start justify-between gap-2 mb-4">
                 <div>
-                    <h2 id="autoSourcesTitle" class="text-sm font-bold text-slate-800">Nguồn tool có thể tải tự động</h2>
-                    <p class="text-xs text-slate-500 mt-1">Tool thử các nguồn phù hợp với từng DOI; có tên nguồn ở đây không có nghĩa mọi bài đều có PDF.</p>
+                    <h2 id="autoSourcesTitle" class="text-sm font-semibold text-slate-900">Luồng tải tự động</h2>
+                    <p class="text-xs text-slate-600 mt-1">Tool chỉ lưu PDF hợp lệ. Tên nguồn dưới đây là các bước thử, không phải bảo đảm mọi DOI đều có file.</p>
                 </div>
             </div>
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -417,7 +347,7 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button onclick="downloadAllOA()" id="btnDownloadAll" class="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm">
+                    <button onclick="downloadAllOA()" id="btnDownloadAll" class="text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg flex items-center gap-1.5">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                         <span>Tải các bài đang xem</span>
                     </button>
@@ -435,8 +365,18 @@
                 <button id="routeFilterVnu" type="button" onclick="setDownloadRouteFilter('vnu')" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100">Thử VNU <span id="routeCountVnu">0</span></button>
                 <button id="routeFilterSearch" type="button" onclick="setDownloadRouteFilter('search')" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 hover:bg-amber-100">Tìm thêm OA <span id="routeCountSearch">0</span></button>
                 <button id="routeFilterDownloaded" type="button" onclick="setDownloadRouteFilter('downloaded')" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200">Đã tải <span id="routeCountDownloaded">0</span></button>
+                <button id="routeFilterFailed" type="button" onclick="setDownloadRouteFilter('failed')" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 hover:bg-amber-100">Chưa tải được <span id="routeCountFailed">0</span></button>
                 <button id="routeFilterPurchase" type="button" onclick="setDownloadRouteFilter('purchase')" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200">Phải mua <span id="routeCountPurchase">0</span></button>
                 <button id="routeFilterInvalid" type="button" onclick="setDownloadRouteFilter('invalid')" class="text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 hover:bg-rose-100">DOI lỗi <span id="routeCountInvalid">0</span></button>
+            </div>
+            <div id="downloadStatusBar" class="hidden px-4 py-2.5 border-b border-slate-100 bg-slate-50">
+                <div class="flex items-center justify-between gap-3 text-xs text-slate-600">
+                    <span id="downloadStatusText">Đang tải</span>
+                    <span id="downloadStatusCounts" class="font-medium text-slate-800 tabular-nums"></span>
+                </div>
+                <div class="mt-2 h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                    <div id="downloadStatusBarFill" class="h-full bg-blue-600 rounded-full" style="width:0%"></div>
+                </div>
             </div>
             <div class="results-table-wrap overflow-x-auto">
                 <table class="results-table w-full text-left text-sm text-slate-600">
@@ -459,8 +399,7 @@
             <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 m-4 transform scale-95 transition-transform duration-200" id="configSourcesModalBox">
                 <div class="flex items-center justify-between pb-3 border-b border-slate-100">
                     <div class="flex items-center gap-2">
-                        <span class="text-base p-1.5 rounded-lg bg-blue-50 text-blue-600">⚙️</span>
-                        <h3 class="font-bold text-slate-800 text-sm">Cấu hình nguồn quan tâm</h3>
+                        <h3 class="font-semibold text-slate-800 text-sm">Cấu hình nguồn quan tâm</h3>
                     </div>
                     <button type="button" onclick="closeConfigModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -518,7 +457,7 @@
                 </div>
 
                 <!-- Right: Interactive Project Selector & Settings -->
-                <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto sm:min-w-[380px] lg:min-w-[480px] xl:min-w-[560px]">
+                <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/10 flex w-full flex-col gap-3 lg:w-auto sm:min-w-[380px] lg:min-w-[480px] xl:min-w-[560px]">
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center justify-between mb-1.5">
                             <label class="text-[11px] font-bold uppercase tracking-wider text-indigo-200 flex items-center gap-1.5">
@@ -530,8 +469,9 @@
                             </button>
                         </div>
 
+                        <div class="flex items-stretch gap-3">
                         <!-- Custom Project Dropdown -->
-                        <div class="relative w-full" id="projectDropdownWrapper">
+                        <div class="relative min-w-0 flex-1" id="projectDropdownWrapper">
                             <input type="hidden" id="projectSelect" value="">
 
                             <!-- Trigger Button -->
@@ -582,13 +522,13 @@
                                 <input type="text" id="manualProjectId" oninput="onManualProjectInput()" placeholder="Nhập mã dự án (VD: proj-test-123)" class="w-full bg-slate-900 text-white text-xs px-3 py-2 rounded-lg border border-amber-400/50 focus:outline-none focus:ring-1 focus:ring-amber-400 font-mono">
                             </div>
                         </div>
+                        <button type="button" onclick="openSlrConfigModal()" aria-label="Configure API connection" class="shrink-0 self-stretch bg-white/10 hover:bg-white/20 text-white px-3.5 py-2 rounded-xl border border-white/10 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer" title="Cấu hình kết nối SLR Server & API Key">
+                            <svg class="w-4 h-4 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                            <span class="hidden sm:inline">Cấu hình API</span>
+                        </button>
+                        </div>
                     </div>
 
-                    <!-- Config Settings Button -->
-                    <button type="button" onclick="openSlrConfigModal()" class="shrink-0 self-end sm:self-center bg-white/10 hover:bg-white/20 text-white px-3.5 py-2.5 rounded-lg border border-white/10 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer" title="Cấu hình kết nối SLR Server & API Key">
-                        <svg class="w-4 h-4 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                        <span class="hidden sm:inline">Cấu hình API</span>
-                    </button>
                 </div>
             </div>
         </div>
@@ -793,6 +733,7 @@
             if (res.already_exists) return 'downloaded';
             if (!res.doi || !res.doi.startsWith('10.') || res.status === 'INVALID_DOI' || res.state === 'INVALID_DOI') return 'invalid';
             if (res.state === 'PURCHASE_REQUIRED') return 'purchase';
+            if (['FAILED', 'NO_ACCESS', 'CAPTCHA_REQUIRED', 'MFA_REQUIRED', 'LOGIN_REQUIRED', 'INVALID_PDF', 'CANCELLED', 'SESSION_EXPIRED'].includes(res.state)) return 'failed';
             if (safeWebUrl(res.oa_link)) return 'oa';
             return VNU_CONFIGURED ? 'vnu' : 'search';
         }
@@ -813,9 +754,9 @@
 
         function updateDownloadRouteCounts() {
             const entries = sourceResultEntries();
-            const counts = { all: entries.length, oa: 0, vnu: 0, search: 0, downloaded: 0, purchase: 0, invalid: 0 };
+            const counts = { all: entries.length, oa: 0, vnu: 0, search: 0, downloaded: 0, failed: 0, purchase: 0, invalid: 0 };
             entries.forEach(({ item }) => { counts[getDownloadRoute(item)]++; });
-            const ids = { all: 'All', oa: 'Oa', vnu: 'Vnu', search: 'Search', downloaded: 'Downloaded', purchase: 'Purchase', invalid: 'Invalid' };
+            const ids = { all: 'All', oa: 'Oa', vnu: 'Vnu', search: 'Search', downloaded: 'Downloaded', failed: 'Failed', purchase: 'Purchase', invalid: 'Invalid' };
             Object.entries(ids).forEach(([route, suffix]) => {
                 const count = document.getElementById(`routeCount${suffix}`);
                 const button = document.getElementById(`routeFilter${suffix}`);
@@ -919,27 +860,6 @@
             if (tabOther) tabOther.className = `text-xs font-semibold px-2.5 py-1 rounded-md transition-all ${mode === 'other' ? activeCls : inactiveCls}`;
             displayResults(currentResults);
         }
-
-        function toggleMobileSidebar() {
-            const sb = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
-            if (sb.classList.contains('-translate-x-full')) {
-                sb.classList.remove('-translate-x-full');
-                overlay.classList.remove('hidden');
-            } else {
-                sb.classList.add('-translate-x-full');
-                overlay.classList.add('hidden');
-            }
-        }
-
-        // Fetch downloaded count for the navbar badge
-        function updateNavBadge() {
-            fetch('/api/downloaded-papers').then(r => r.json()).then(data => {
-                const badge = document.getElementById('navDownloadedBadge');
-                if (badge) badge.textContent = data.total || 0;
-            }).catch(() => {});
-        }
-        document.addEventListener('DOMContentLoaded', updateNavBadge);
 
         dropZone.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', () => {
@@ -1072,7 +992,27 @@
             return node;
         }
 
-        const FAILURE_STATES = new Set(['PURCHASE_REQUIRED', 'NO_ACCESS', 'FAILED', 'CAPTCHA_REQUIRED', 'MFA_REQUIRED', 'LOGIN_REQUIRED', 'INVALID_PDF']);
+        const FAILURE_STATES = new Set(['PURCHASE_REQUIRED', 'NO_ACCESS', 'FAILED', 'CAPTCHA_REQUIRED', 'MFA_REQUIRED', 'LOGIN_REQUIRED', 'INVALID_PDF', 'CANCELLED', 'SESSION_EXPIRED']);
+
+        function stateBadgeClass(state) {
+            return ({
+                DOWNLOADED: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                PROCESSING: 'bg-blue-50 text-blue-800 border-blue-200',
+                OPEN_ACCESS: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                CANCELLED: 'bg-amber-50 text-amber-900 border-amber-200',
+                CAPTCHA_REQUIRED: 'bg-amber-50 text-amber-900 border-amber-200',
+                MFA_REQUIRED: 'bg-amber-50 text-amber-900 border-amber-200',
+                LOGIN_REQUIRED: 'bg-amber-50 text-amber-900 border-amber-200',
+                SESSION_EXPIRED: 'bg-amber-50 text-amber-900 border-amber-200',
+                PURCHASE_REQUIRED: 'bg-slate-100 text-slate-600 border-slate-200',
+                NO_ACCESS: 'bg-rose-50 text-rose-800 border-rose-200',
+                FAILED: 'bg-rose-50 text-rose-800 border-rose-200',
+                INVALID_DOI: 'bg-rose-50 text-rose-800 border-rose-200',
+                INVALID_PDF: 'bg-rose-50 text-rose-800 border-rose-200',
+                INSTITUTION_ACCESS: 'bg-blue-50 text-blue-800 border-blue-200',
+                AUTHENTICATED: 'bg-blue-50 text-blue-800 border-blue-200'
+            })[state] || 'bg-slate-100 text-slate-700 border-slate-200';
+        }
 
         function renderDownloadFailure(cell, index, state, message, openUrl) {
             cell.replaceChildren();
@@ -1092,11 +1032,15 @@
                 cell.append(badge, openLink);
                 return;
             }
-            cell.className = 'inline-block mr-2 text-xs text-amber-700 whitespace-normal max-w-xs';
-            const retryRowBtn = element('button', 'Thử lại', 'inline-flex items-center gap-1 mr-2 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500 hover:bg-amber-600 text-white transition-all shadow-sm');
+            cell.className = 'inline-block mr-2 text-xs text-slate-600 whitespace-normal max-w-xs';
+            const retryRowBtn = element('button', 'Thử lại', 'inline-flex items-center gap-1 mr-2 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-blue-600 hover:bg-blue-700 text-white');
             retryRowBtn.onclick = () => downloadAllOA([index]);
-            openLink.className = 'font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-900';
-            cell.append(retryRowBtn, element('span', 'Chưa tải được tự động. '), openLink);
+            openLink.className = 'font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900';
+            const hint = state === 'CAPTCHA_REQUIRED' ? 'Cần xác minh trong trình duyệt, rồi thử lại. ' :
+                state === 'CANCELLED' ? 'Lần tải trước bị gián đoạn. ' :
+                state === 'NO_ACCESS' ? 'Phiên thư viện chưa lấy được PDF. ' :
+                'Chưa tải được tự động. ';
+            cell.append(retryRowBtn, element('span', hint), openLink);
         }
 
         function stateLabel(state) {
@@ -1138,12 +1082,18 @@
                 if (activeDownloadRouteFilter !== 'all') {
                     emptyTd.textContent = 'Không có bài báo trong nhóm cách tải này.';
                 } else if (activeSourceFilter === 'interested') {
-                    emptyTd.innerHTML = `
-                        <div class="py-4">
-                            <p class="font-medium text-slate-600 mb-1">Không có bài báo nào thuộc các nguồn quan tâm hiện tại.</p>
-                            <p class="text-slate-400">Bạn có thể bấm <button type="button" onclick="openConfigModal()" class="text-blue-600 hover:underline font-semibold transition-colors">⚙️ Cấu hình nguồn</button> để thêm nhà xuất bản bạn quan tâm.</p>
-                        </div>
-                    `;
+                    const emptyWrap = document.createElement('div');
+                    emptyWrap.className = 'py-4';
+                    emptyWrap.append(
+                        element('p', 'Không có bài báo nào thuộc các nguồn quan tâm hiện tại.', 'font-medium text-slate-600 mb-1'),
+                    );
+                    const emptyHint = element('p', 'Bạn có thể mở cấu hình nguồn để thêm nhà xuất bản.', 'text-slate-500');
+                    const configBtn = element('button', 'Cấu hình nguồn', 'ml-1 text-blue-700 hover:underline font-semibold');
+                    configBtn.type = 'button';
+                    configBtn.onclick = openConfigModal;
+                    emptyHint.append(configBtn);
+                    emptyWrap.append(emptyHint);
+                    emptyTd.append(emptyWrap);
                 } else if (activeSourceFilter === 'other') {
                     emptyTd.textContent = 'Tất cả các bài báo đều thuộc nguồn bạn quan tâm!';
                 } else {
@@ -1193,11 +1143,12 @@
                     const route = getDownloadRoute(res);
                     const routeLabels = {
                         oa: 'Có link OA', vnu: 'Thử VNU + OA', search: 'Tìm thêm OA',
-                        downloaded: 'Đã có PDF', purchase: 'Phải mua', invalid: 'DOI lỗi'
+                        downloaded: 'Đã có PDF', failed: 'Chưa tải được', purchase: 'Phải mua', invalid: 'DOI lỗi'
                     };
                     const routeColors = {
                         oa: 'bg-emerald-50 text-emerald-700', vnu: 'bg-blue-50 text-blue-700',
-                        search: 'bg-amber-50 text-amber-700', downloaded: 'bg-slate-100 text-slate-700', purchase: 'bg-slate-100 text-slate-500',
+                        search: 'bg-amber-50 text-amber-700', downloaded: 'bg-slate-100 text-slate-700',
+                        failed: 'bg-amber-50 text-amber-800', purchase: 'bg-slate-100 text-slate-500',
                         invalid: 'bg-rose-50 text-rose-700'
                     };
                     const methodLabel = route === 'downloaded' ? downloadMethodLabel(res.download_method) : '';
@@ -1218,7 +1169,9 @@
                     );
                         
                     const code = res.already_exists ? 'DOWNLOADED' : res.state || res.status;
-                    const state = element('td', stateLabel(code), 'p-4 align-top text-xs whitespace-nowrap');
+                    const state = element('td', '', 'p-4 align-top text-xs');
+                    const statePill = element('span', stateLabel(code), `status-pill border ${stateBadgeClass(code)}`);
+                    state.appendChild(statePill);
                     state.dataset.label = 'Trạng thái';
                     state.dataset.state = code;
                     state.id = `state-cell-${index}`;
@@ -1233,7 +1186,7 @@
                     if (savedFailure) {
                         renderDownloadFailure(cell, index, res.state, res.message, res.resolved_url);
                     } else if (res.doi) {
-                        const download = element('button', res.already_exists ? 'Đã tải' : 'Tải tự động', 'bg-blue-600 text-white px-3 py-2 rounded-lg font-medium shadow-sm hover:bg-blue-700 transition-colors');
+                        const download = element('button', res.already_exists ? 'Đã tải' : 'Tải tự động', 'bg-blue-600 text-white px-3 py-2 rounded-lg font-medium hover:bg-blue-700');
                         download.onclick = res.already_exists ? openFolder : () => downloadAllOA([index]);
                         cell.append(download);
                     }
@@ -1263,7 +1216,7 @@
         async function restoreSavedResults() {
             if (scanBusy || downloadBusy) return;
             const response = await fetch('/api/papers');
-            if (!response.ok) return showToast('Cannot restore saved list', false);
+            if (!response.ok) return showToast('Không khôi phục được danh sách đã lưu', false);
             const data = await response.json();
             if (scanBusy || downloadBusy) return;
             currentResults = data.papers.filter(paper => paper.doi.startsWith('10.')).map(paper => {
@@ -1298,7 +1251,7 @@
 
             downloadBusy = true;
             const btn = document.getElementById('btnDownloadAll');
-            btn.className = 'text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm opacity-90';
+            btn.className = 'text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 opacity-90';
             btn.disabled = true;
             btn.innerHTML = `<svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Đang chuẩn bị tải ${itemsToDownload.length} file...</span>`;
             let successCount = 0;
@@ -1312,7 +1265,18 @@
             const itemProgressLanes = new Map();
             const itemDownloadStatuses = new Map();
             const updateDownloadProgress = (completed, total) => {
-                btn.innerHTML = `<span>\u0110\u00e3 x\u1eed l\u00fd ${completed}/${total} | OA ${oaDone}/${oaTotal} | VNU ${vnuDone}/${vnuTotal} | t\u1ea3i ${successCount} | l\u1ed7i ${failCount}</span>`;
+                const label = `Đã xử lý ${completed}/${total} · OA ${oaDone}/${oaTotal} · VNU ${vnuDone}/${vnuTotal} · tải ${successCount} · lỗi ${failCount}`;
+                btn.innerHTML = `<span>${label}</span>`;
+                const bar = document.getElementById('downloadStatusBar');
+                const text = document.getElementById('downloadStatusText');
+                const counts = document.getElementById('downloadStatusCounts');
+                const fill = document.getElementById('downloadStatusBarFill');
+                if (bar && text && counts && fill) {
+                    bar.classList.remove('hidden');
+                    text.textContent = completed < total ? 'Đang tải các bài trong danh sách' : 'Đã xong lượt tải này';
+                    counts.textContent = label;
+                    fill.style.width = total ? `${Math.round((completed / total) * 100)}%` : '0%';
+                }
             };
             const updateItemDownloadProgress = (index, lane, percent, received, size, status) => {
                 const cell = document.getElementById(`action-cell-${index}`);
@@ -1441,16 +1405,18 @@
                                     currentResults[index].state = 'DOWNLOADED';
                                     currentResults[index].download_method = result.method;
                                     currentResults[index].custom_name = result.filename;
-                                    document.getElementById(`state-cell-${index}`).textContent = stateLabel('DOWNLOADED');
-                                    document.getElementById(`state-cell-${index}`).dataset.state = 'DOWNLOADED';
-                                    cell.textContent = '\u2713 \u0110\u00e3 t\u1ea3i t\u1ef1 \u0111\u1ed9ng';
+                                    const doneState = document.getElementById(`state-cell-${index}`);
+                                    doneState.replaceChildren(element('span', stateLabel('DOWNLOADED'), `status-pill border ${stateBadgeClass('DOWNLOADED')}`));
+                                    doneState.dataset.state = 'DOWNLOADED';
+                                    cell.textContent = 'Đã tải tự động';
                                     cell.className = 'text-xs font-medium text-emerald-700';
                                 } else {
                                     failCount++;
                                     const failedState = result.state || 'FAILED';
-                                    document.getElementById(`state-cell-${index}`).textContent = stateLabel(failedState);
-                                    document.getElementById(`state-cell-${index}`).dataset.state = failedState;
-                                    document.getElementById(`state-cell-${index}`).title = result.message || '';
+                                    const failCell = document.getElementById(`state-cell-${index}`);
+                                    failCell.replaceChildren(element('span', stateLabel(failedState), `status-pill border ${stateBadgeClass(failedState)}`));
+                                    failCell.dataset.state = failedState;
+                                    failCell.title = result.message || '';
                                     currentResults[index].state = failedState;
                                     currentResults[index].message = result.message || '';
                                     renderDownloadFailure(cell, index, failedState, result.message, result.open_url);
@@ -1473,6 +1439,9 @@
                             } else if (result.state === 'PURCHASE_REQUIRED' && routeBadge) {
                                 routeBadge.textContent = 'Phải mua';
                                 routeBadge.className = 'ml-1 inline-flex text-[11px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-500';
+                            } else if (routeBadge && result.state) {
+                                routeBadge.textContent = 'Chưa tải được';
+                                routeBadge.className = 'ml-1 inline-flex text-[11px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-800';
                             }
                             updateDownloadRouteCounts();
                             processedCount = event.completed;
@@ -1493,25 +1462,29 @@
                 downloadBusy = false;
                 const remainingFails = currentResults.filter(item => !item.already_exists && item.doi && item.doi.startsWith('10.') && item.state !== 'PURCHASE_REQUIRED').length;
                 if (remainingFails > 0) {
-                    btn.className = 'text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-md cursor-pointer ring-2 ring-amber-400/50';
+                    btn.className = 'text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer';
                     btn.disabled = false;
                     btn.title = 'Bấm để thử tải lại tất cả bài chưa tải được';
-                    btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg><span>Thử lại ${remainingFails} bài lỗi (${successCount} thành công)</span>`;
+                    btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg><span>Thử lại ${remainingFails} bài chưa tải (${successCount} thành công)</span>`;
                 } else {
-                    btn.className = 'text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm';
+                    btn.className = 'text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-lg flex items-center gap-1.5';
                     btn.disabled = false;
-                    btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span>Đã tải thành công tất cả (${successCount} bài)</span>`;
+                    btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg><span>Đã tải xong ${successCount} bài</span>`;
                     setTimeout(() => {
                         if (!downloadBusy) {
                             btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg><span>Tải các bài đang xem</span>`;
+                            const bar = document.getElementById('downloadStatusBar');
+                            if (bar) bar.classList.add('hidden');
                         }
                     }, 4000);
                 }
             } catch (error) {
                 downloadBusy = false;
-                btn.className = 'text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-md cursor-pointer';
+                btn.className = 'text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer';
                 btn.disabled = false;
                 btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg><span>Lỗi: ${error.message} (Bấm thử lại)</span>`;
+                const bar = document.getElementById('downloadStatusBar');
+                if (bar) bar.classList.add('hidden');
             }
         }
 
@@ -2548,12 +2521,15 @@
                 window.history.pushState({ tab: 'fetch' }, '', '/');
             }
 
-            if (window.innerWidth < 768) {
-                const sidebar = document.getElementById('sidebar');
-                const overlay = document.getElementById('sidebarOverlay');
-                if (sidebar) sidebar.classList.add('-translate-x-full');
-                if (overlay) overlay.classList.add('hidden');
+            if (navTabFetch) {
+                if (tabName === 'upload') navTabFetch.removeAttribute('aria-current');
+                else navTabFetch.setAttribute('aria-current', 'page');
             }
+            if (navTabUpload) {
+                if (tabName === 'upload') navTabUpload.setAttribute('aria-current', 'page');
+                else navTabUpload.removeAttribute('aria-current');
+            }
+            if (window.innerWidth < 768) toggleMobileSidebar(false);
         }
 
         window.addEventListener('popstate', (e) => {

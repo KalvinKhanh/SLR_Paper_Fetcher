@@ -2,7 +2,7 @@ import os
 import re
 import time
 import json
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from difflib import SequenceMatcher
 from threading import Lock
 from contextlib import ExitStack
@@ -26,6 +26,80 @@ HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,application/pdf,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9,vi;q=0.8",
 }
+
+_HTTP_PDF_REFERERS = (
+    ("ieee.org", "https://ieeexplore.ieee.org/"),
+    ("mdpi.com", "https://www.mdpi.com/"),
+    ("nature.com", "https://www.nature.com/"),
+    ("acm.org", "https://dl.acm.org/"),
+    ("wiley.com", "https://onlinelibrary.wiley.com/"),
+    ("springer.com", "https://link.springer.com/"),
+)
+
+
+def is_http_url(url):
+    try:
+        parsed = urlparse(str(url or ""))
+        return parsed.scheme in ("http", "https") and bool(parsed.hostname)
+    except ValueError:
+        return False
+
+
+def publisher_pdf_candidates(doi, page_url=""):
+    """Known publisher PDF endpoints derived from the DOI or the article URL."""
+    doi = extract_doi(doi) or str(doi or "").strip()
+    if not doi:
+        return []
+    encoded = quote(doi, safe="/")
+    parsed = urlparse(page_url or "")
+    host = (parsed.hostname or "").lower()
+    path = parsed.path or ""
+    urls = []
+    arnumber = None
+    match = re.search(r"(?:/document/|arnumber=)(\d{6,})", page_url or "", re.I)
+    if match:
+        arnumber = match.group(1)
+    if arnumber:
+        urls.extend([
+            f"https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber={arnumber}&ref=",
+            f"https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber={arnumber}",
+        ])
+    if "link.springer.com" in host or doi.startswith("10.1007/"):
+        urls.append(f"https://link.springer.com/content/pdf/{encoded}.pdf")
+    if "nature.com" in host or doi.startswith("10.1038/"):
+        article = path.rstrip("/").split("/")[-1] if "/articles/" in path else doi.split("/", 1)[-1]
+        if article:
+            urls.append(f"https://www.nature.com/articles/{article}.pdf")
+    if "acm.org" in host or doi.startswith("10.1145/"):
+        urls.append(f"https://dl.acm.org/doi/pdf/{encoded}")
+    if "wiley.com" in host or doi.startswith(("10.1002/", "10.1111/")):
+        urls.append(f"https://onlinelibrary.wiley.com/doi/pdfdirect/{encoded}")
+        urls.append(f"https://onlinelibrary.wiley.com/doi/pdf/{encoded}")
+    if "mdpi.com" in host:
+        base = re.sub(r"/(pdf|html)$", "", (page_url or "").split("?")[0].rstrip("/"), flags=re.I)
+        if re.search(r"mdpi\.com/\d", base):
+            urls.append(base + "/pdf")
+    return list(dict.fromkeys(url for url in urls if is_http_url(url)))
+
+
+def terminal_failure_state(message, prior=""):
+    prefixes = (
+        ("PURCHASE_REQUIRED:", "PURCHASE_REQUIRED"),
+        ("CAPTCHA_REQUIRED:", "CAPTCHA_REQUIRED"),
+        ("MFA_REQUIRED:", "MFA_REQUIRED"),
+        ("LOGIN_REQUIRED:", "LOGIN_REQUIRED"),
+        ("NO_ACCESS:", "NO_ACCESS"),
+        ("INVALID_PDF:", "INVALID_PDF"),
+        ("CANCELLED:", "CANCELLED"),
+        ("INVALID_DOI:", "INVALID_DOI"),
+    )
+    text = str(message or "")
+    for prefix, state in prefixes:
+        if text.startswith(prefix) or f" {prefix}" in text:
+            return state
+    if prior in ("CAPTCHA_REQUIRED", "MFA_REQUIRED", "LOGIN_REQUIRED", "PURCHASE_REQUIRED"):
+        return prior
+    return "FAILED"
 
 def extract_doi(text: str) -> str:
     """Trích xuất mã DOI chuẩn từ URL hoặc chuỗi văn bản."""
@@ -255,8 +329,11 @@ def download_file_direct(url: str, output_path: Path, progress_callback=None) ->
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     custom_headers = dict(HEADERS)
-    if "ieee.org" in url:
-        custom_headers["Referer"] = "https://ieeexplore.ieee.org/"
+    host = (urlparse(url).hostname or "").lower()
+    for suffix, referer in _HTTP_PDF_REFERERS:
+        if host == suffix or host.endswith("." + suffix):
+            custom_headers["Referer"] = referer
+            break
 
     partial_path = output_path.with_suffix(output_path.suffix + ".part")
     response = None
@@ -765,6 +842,8 @@ def _run_sync_vnu(doi: str, output_filename: str, progress_callback=None, status
                 candidates = []
                 for element in elements:
                     url = element.get("url", "")
+                    if not is_http_url(url):
+                        continue
                     label = element.get("label", "").lower()
                     lowered = url.lower()
                     kind = element.get("kind", "").lower()
@@ -1095,9 +1174,22 @@ def _run_sync_vnu(doi: str, output_filename: str, progress_callback=None, status
                     if progress_callback:
                         progress_callback(80)
                     guard_action(page)
-                    with page.expect_download(timeout=15000) as download_info:
-                        pdf_element.click(force=True)
-                    download = download_info.value
+                    download = None
+                    try:
+                        with page.expect_download(timeout=15000) as download_info:
+                            pdf_element.click(force=True)
+                        download = download_info.value
+                    except Exception:
+                        try:
+                            if pdf_element.is_visible():
+                                pdf_element.click(force=True)
+                        except Exception:
+                            pass
+                        wait_for_stable_page(page, timeout_ms=8000)
+                        if save_captured_pdf():
+                            close_browser_safely(browser)
+                            return True, f"Đã lưu PDF qua VNU: {output_path.name}"
+                        raise
                     if progress_callback:
                         progress_callback(90)
                     if not save_browser_download(download):
@@ -1136,28 +1228,22 @@ def _run_sync_vnu(doi: str, output_filename: str, progress_callback=None, status
             # download link rather than a visible PDF button. Fetch candidates
             # through the authenticated browser context so VNU cookies apply.
             from urllib.parse import urljoin
-            candidate_urls = list(dict.fromkeys(pdf_capture.urls + collect_pdf_urls(page)))
+            candidate_urls = list(dict.fromkeys(
+                publisher_pdf_candidates(doi, page.url) + pdf_capture.urls + collect_pdf_urls(page)
+            ))
             if view_pdf_url:
                 candidate_urls.insert(0, view_pdf_url)
             if progress_callback:
                 progress_callback(70)
-            # IEEE's article page often exposes its PDF through the authenticated
-            # stamp endpoint instead of a normal .pdf anchor. Keep these requests
-            # inside the Playwright context so the VNU/IEEE session cookies apply.
-            ieee_match = re.search(r"(?:/document/|arnumber=)(\d{6,})", page.url, re.IGNORECASE)
-            if "ieeexplore.ieee.org" in page.url.lower() and ieee_match:
-                arnumber = ieee_match.group(1)
-                ieee_pdf_urls = [
-                    f"https://ieeexplore.ieee.org/stampPDF/getPDF.jsp?tp=&arnumber={arnumber}&ref=",
-                    f"https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber={arnumber}",
-                ]
-                candidate_urls = list(dict.fromkeys(ieee_pdf_urls + candidate_urls))
+            candidate_urls = [url for url in candidate_urls if is_http_url(urljoin(page.url, url))]
 
             attempt_results = []
             for candidate_url in candidate_urls[:8]:
                 candidate_url = urljoin(page.url, candidate_url)
+                if not is_http_url(candidate_url):
+                    continue
                 guard_action(page)
-                if provider_for_url(candidate_url) == "Elsevier" or pdf_capture.browser_only:
+                if provider_for_url(candidate_url) in BrowserPdfCapture._BROWSER_PDF_PROVIDERS or pdf_capture.browser_only:
                     if pdf_capture.save_url(candidate_url, page.url):
                         return True, f"Đã lưu PDF trong phiên trình duyệt VNU: {output_path.name}"
                     attempt_results.append("Phiên trình duyệt chưa nhận được PDF từ link đã tìm thấy.")
@@ -1443,8 +1529,8 @@ async def _auto_download_paper(doi: str, output_filename: str, title="", progres
                 # The publisher confirmed this needs a purchase; skip the public search.
                 store.update(doi, "PURCHASE_REQUIRED", message=message)
                 return False, message, "purchase_required"
-            prior = store.get(doi)["status"]
-            final_state = prior if prior in ("CAPTCHA_REQUIRED", "MFA_REQUIRED", "LOGIN_REQUIRED") else ("NO_ACCESS" if message.startswith("NO_ACCESS:") else "FAILED")
+            prior = (store.get(doi) or {}).get("status")
+            final_state = terminal_failure_state(message, prior)
         else:
             messages.append("Chưa cấu hình tài khoản VNU.")
             final_state = "LOGIN_REQUIRED"
@@ -1456,9 +1542,8 @@ async def _auto_download_paper(doi: str, output_filename: str, title="", progres
             return finished(message, "public_copy")
         messages.append(message)
         prior = (store.get(doi) or {}).get("status")
-        if prior in ("CAPTCHA_REQUIRED", "MFA_REQUIRED", "LOGIN_REQUIRED"):
-            final_state = prior
         message = safe_message(" ".join(messages))
+        final_state = terminal_failure_state(message, prior if prior in ("CAPTCHA_REQUIRED", "MFA_REQUIRED", "LOGIN_REQUIRED") else final_state)
         store.update(doi, final_state, message=message)
         return False, message, "unavailable"
     except asyncio.CancelledError:

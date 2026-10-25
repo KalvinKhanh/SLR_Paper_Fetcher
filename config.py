@@ -4,7 +4,7 @@ from dotenv import load_dotenv, dotenv_values
 
 # Tự động load file .env từ thư mục hiện tại
 BASE_DIR = Path(__file__).resolve().parent
-ENV_PATH = BASE_DIR / ".env"
+ENV_PATH = Path(os.getenv("APP_ENV_FILE", str(BASE_DIR / ".env"))).expanduser()
 _API_FIELDS = ("ELSEVIER_API_KEY", "ELSEVIER_INST_TOKEN", "OPENALEX_API_KEY", "SLR_API_BASE_URL", "SLR_PUBLIC_API_KEY", "SLR_DEFAULT_PROJECT_ID")
 _API_ENV_DEFAULTS = {key: os.getenv(key, "") for key in _API_FIELDS}
 load_dotenv(dotenv_path=ENV_PATH)
@@ -51,8 +51,8 @@ class Settings:
         or ("msedge" if os.name == "nt" else "chromium")
     )
     VNU_BROWSER_HEADLESS: bool = os.getenv("VNU_BROWSER_HEADLESS", "false" if os.name == "nt" else "true").lower() in ("true", "1", "yes")
-    VNU_BROWSER_STATE_FILE: Path = BASE_DIR / ".vnu-browser-state.json"
-    VNU_BROWSER_PROFILE_DIR: Path = BASE_DIR / ".vnu-browser-profile"
+    VNU_BROWSER_STATE_FILE: Path = Path(os.getenv("VNU_BROWSER_STATE_FILE", str(BASE_DIR / ".vnu-browser-state.json"))).expanduser()
+    VNU_BROWSER_PROFILE_DIR: Path = Path(os.getenv("VNU_BROWSER_PROFILE_DIR", str(BASE_DIR / ".vnu-browser-profile"))).expanduser()
     VNU_ALLOW_MANUAL_VERIFICATION: bool = os.getenv("VNU_ALLOW_MANUAL_VERIFICATION", "true").lower() in ("true", "1", "yes")
     VNU_VERIFICATION_WAIT_SECONDS: int = max(0, int(os.getenv("VNU_VERIFICATION_WAIT_SECONDS", "180")))
 

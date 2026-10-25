@@ -34,14 +34,24 @@ class BrowserPdfCapture:
         for page in tracked_pages or []:
             self._on_page(page)
 
+    _BROWSER_PDF_PROVIDERS = {"Elsevier", "IEEE", "Springer", "ACM", "Wiley"}
+    _PDF_PATH_MARKERS = (
+        "/content/pdf/", "/content/epdf/", "/doi/pdf", "/doi/pdfdirect",
+        "/stamppdf/", "/pdfft", "getpdf.jsp",
+    )
+
     @staticmethod
     def _is_pdf_url(url):
         parsed = urlparse(url)
+        if parsed.scheme not in ("https", "http"):
+            return False
         host = (parsed.hostname or "").lower()
-        return parsed.scheme in ("https", "http") and (
-            host == "pdf.sciencedirectassets.com"
-            or parsed.path.lower().endswith(".pdf")
-        )
+        path = (parsed.path or "").lower()
+        if host == "pdf.sciencedirectassets.com":
+            return True
+        if path.endswith(".pdf") or path.endswith("/pdf"):
+            return True
+        return any(marker in path for marker in BrowserPdfCapture._PDF_PATH_MARKERS)
 
     def _remember_url(self, url):
         # Keep the original signed URL intact, including all query parameters.
@@ -152,16 +162,24 @@ class BrowserPdfCapture:
     def save_url(self, url, referer=""):
         if self.request_guard:
             self.request_guard()
-        if self.browser_only or provider_for_url(url) == "Elsevier":
+        provider = provider_for_url(url)
+        if self.browser_only or provider in self._BROWSER_PDF_PROVIDERS:
             return self._save_browser_url(url, referer)
         response = None
         try:
             # Public/non-challenged publishers may use context cookies here.
             response = self.context.request.get(
                 url, headers={"Accept": "application/pdf,*/*", "Referer": referer}, timeout=25000)
-            return response.status == 200 and self.save_body(response.body())
-        except Exception:
+            body = response.body() if response.status == 200 else b""
+            if response.status == 200 and self.save_body(body):
+                return True
+            # Publisher HTML/403 responses still often yield a real PDF
+            # when fetched with the page's cookie jar and network stack.
+            if response.status in (401, 403) or (response.status == 200 and not is_complete_pdf(body)):
+                return self._save_browser_url(url, referer)
             return False
+        except Exception:
+            return self._save_browser_url(url, referer)
         finally:
             if response:
                 response.dispose()

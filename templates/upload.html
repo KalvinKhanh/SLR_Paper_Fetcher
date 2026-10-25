@@ -162,117 +162,22 @@
             50% { opacity: .4; }
         }
     </style>
+  <script src="/static/js/sidebar.js" defer></script>
 </head>
 <body class="text-slate-800 w-full min-w-full min-h-screen flex flex-col md:flex-row bg-slate-50 overflow-x-hidden">
 
     <!-- Mobile Overlay -->
-    <div id="sidebarOverlay" onclick="toggleMobileSidebar()" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-20 hidden md:hidden transition-opacity"></div>
-
-    <!-- Left Sidebar Navigation -->
-    <aside id="sidebar" class="fixed md:sticky top-0 left-0 w-64 xl:w-72 bg-white border-r border-slate-200/90 flex flex-col shrink-0 h-screen z-30 transition-transform duration-300 -translate-x-full md:translate-x-0 custom-shadow md:shadow-none">
-        <!-- Brand Header -->
-        <div class="h-16 px-5 border-b border-slate-100 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-extrabold shadow-md shadow-blue-500/20 text-base">
-                    P
-                </div>
-                <div>
-                    <span class="font-bold text-base tracking-tight bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">SLR Fetcher</span>
-                    <span class="text-[10px] block text-slate-400 -mt-0.5 font-medium">Systematic Review Tool</span>
-                </div>
-            </div>
-            <!-- Mobile Close Button -->
-            <button onclick="toggleMobileSidebar()" class="md:hidden text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-            </button>
-        </div>
-
-        <!-- Navigation Menu -->
-        <div class="flex-1 py-5 px-3 flex flex-col justify-between overflow-y-auto">
-            <div class="space-y-6">
-                <!-- Main Nav Group -->
-                <div>
-                    <p class="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Chức năng chính</p>
-                    <nav class="space-y-1.5">
-                        <!-- Tab 1: Fetch & Download -->
-                        <a href="/" onclick="switchTab(event, 'fetch')" id="navTabFetch" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all {% if active_tab == 'fetch' or not active_tab %}bg-blue-50 text-blue-700 shadow-sm shadow-blue-500/5 font-bold border border-blue-100/80{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100/70{% endif %}">
-                            <div id="navIconFetch" class="w-7 h-7 rounded-lg flex items-center justify-center {% if active_tab == 'fetch' or not active_tab %}bg-blue-600 text-white shadow-sm shadow-blue-500/20{% else %}bg-slate-100 text-slate-500{% endif %}">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                            </div>
-                            <span>Thu thập & Tải bài</span>
-                            <span id="scanRunningBadge" class="hidden ml-auto flex items-center gap-1 bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                                <span class="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
-                                <span>Đang quét</span>
-                            </span>
-                        </a>
-
-                        <!-- Tab 2: Selected Library & Upload -->
-                        <a href="/upload" onclick="switchTab(event, 'upload')" id="navTabUpload" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all {% if active_tab == 'upload' %}bg-indigo-50 text-indigo-700 shadow-sm shadow-indigo-500/5 font-bold border border-indigo-100/80{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100/70{% endif %}">
-                            <div id="navIconUpload" class="w-7 h-7 rounded-lg flex items-center justify-center {% if active_tab == 'upload' %}bg-indigo-600 text-white shadow-sm shadow-indigo-500/20{% else %}bg-slate-100 text-slate-500{% endif %}">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-                            </div>
-                            <span>Kho bài & Upload</span>
-                            <span id="navDownloadedBadge" class="ml-auto bg-blue-100 text-blue-700 text-[10px] px-2 py-0.5 rounded-full font-bold">...</span>
-                        </a>
-                        <a href="/analysis" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all text-slate-600 hover:text-slate-900 hover:bg-slate-100/70">
-                            <span class="w-7 h-7 rounded-lg flex items-center justify-center bg-slate-100 text-slate-500">✦</span>
-                            <span>AI phân tích</span>
-                        </a>
-                    </nav>
-                </div>
-
-                <!-- Utilities Group -->
-                <div>
-                    <p class="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Thao tác nhanh</p>
-                    <div class="space-y-1">
-                        <button onclick="restoreSavedResults()" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 transition-all text-left">
-                            <div class="w-7 h-7 rounded-lg flex items-center justify-center bg-slate-100 text-slate-500">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                            </div>
-                            <span>Khôi phục danh sách</span>
-                        </button>
-
-                        <button onclick="openFolder()" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 transition-all text-left">
-                            <div class="w-7 h-7 rounded-lg flex items-center justify-center bg-slate-100 text-slate-500">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
-                            </div>
-                            <span>Mở thư mục Downloads</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Bottom Institutional Card -->
-            <div class="mt-auto pt-4 border-t border-slate-100 space-y-3">
-                <div class="bg-slate-50 p-3 rounded-xl border border-slate-200/70 text-xs">
-                    <div class="flex items-center justify-between mb-1.5">
-                        <span class="font-semibold text-slate-700">VNU Library</span>
-                        {% if vnu_configured %}
-                        <span class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Đã kết nối
-                        </span>
-                        {% else %}
-                        <span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
-                            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Chưa lưu
-                        </span>
-                        {% endif %}
-                    </div>
-                    <p class="text-[11px] text-slate-400">OpenAthens ĐHQG-HCM</p>
-                </div>
-
-                <div class="px-2 text-[10px] text-slate-400 font-medium text-center">
-                    SLR Paper Fetcher • ĐHQG-HCM
-                </div>
-            </div>
-        </div>
-    </aside>
+    {% set sidebar_active_tab = 'upload' %}
+{% set sidebar_workspace_mode = true %}
+{% set sidebar_show_utilities = true %}
+{% include "components/sidebar.html" %}
 
     <!-- Main Content Area -->
     <div class="flex-1 flex flex-col min-w-0 min-h-screen overflow-y-auto">
         <!-- Top Action Bar -->
         <header class="h-16 border-b border-slate-200/80 bg-white/80 sticky top-0 z-20 backdrop-blur-md px-6 flex items-center justify-between">
             <div class="flex items-center gap-3">
-                <button onclick="toggleMobileSidebar()" class="md:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100">
+                <button onclick="toggleMobileSidebar()" aria-controls="sidebar" aria-expanded="false" data-sidebar-toggle class="md:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                 </button>
                 <div class="flex items-center gap-2 text-xs text-slate-500 font-medium">
@@ -476,7 +381,7 @@
                 </div>
 
                 <!-- Right: Interactive Project Selector & Settings -->
-                <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto sm:min-w-[380px] lg:min-w-[480px] xl:min-w-[560px]">
+                <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/10 flex w-full flex-col gap-3 lg:w-auto sm:min-w-[380px] lg:min-w-[480px] xl:min-w-[560px]">
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center justify-between mb-1.5">
                             <label class="text-[11px] font-bold uppercase tracking-wider text-indigo-200 flex items-center gap-1.5">
@@ -488,8 +393,9 @@
                             </button>
                         </div>
 
+                        <div class="flex items-stretch gap-3">
                         <!-- Custom Project Dropdown -->
-                        <div class="relative w-full" id="projectDropdownWrapper">
+                        <div class="relative min-w-0 flex-1" id="projectDropdownWrapper">
                             <input type="hidden" id="projectSelect" value="">
 
                             <!-- Trigger Button -->
@@ -540,13 +446,13 @@
                                 <input type="text" id="manualProjectId" oninput="onManualProjectInput()" placeholder="Nhập mã dự án (VD: proj-test-123)" class="w-full bg-slate-900 text-white text-xs px-3 py-2 rounded-lg border border-amber-400/50 focus:outline-none focus:ring-1 focus:ring-amber-400 font-mono">
                             </div>
                         </div>
+                        <button type="button" onclick="openSlrConfigModal()" aria-label="Configure API connection" class="shrink-0 self-stretch bg-white/10 hover:bg-white/20 text-white px-3.5 py-2 rounded-xl border border-white/10 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer" title="Cấu hình kết nối SLR Server & API Key">
+                            <svg class="w-4 h-4 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                            <span class="hidden sm:inline">Cấu hình API</span>
+                        </button>
+                        </div>
                     </div>
 
-                    <!-- Config Settings Button -->
-                    <button type="button" onclick="openSlrConfigModal()" class="shrink-0 self-end sm:self-center bg-white/10 hover:bg-white/20 text-white px-3.5 py-2.5 rounded-lg border border-white/10 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer" title="Cấu hình kết nối SLR Server & API Key">
-                        <svg class="w-4 h-4 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                        <span class="hidden sm:inline">Cấu hình API</span>
-                    </button>
                 </div>
             </div>
         </div>
@@ -836,27 +742,6 @@
             if (tabOther) tabOther.className = `text-xs font-semibold px-2.5 py-1 rounded-md transition-all ${mode === 'other' ? activeCls : inactiveCls}`;
             displayResults(currentResults);
         }
-
-        function toggleMobileSidebar() {
-            const sb = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
-            if (sb.classList.contains('-translate-x-full')) {
-                sb.classList.remove('-translate-x-full');
-                overlay.classList.remove('hidden');
-            } else {
-                sb.classList.add('-translate-x-full');
-                overlay.classList.add('hidden');
-            }
-        }
-
-        // Fetch downloaded count for the navbar badge
-        function updateNavBadge() {
-            fetch('/api/downloaded-papers').then(r => r.json()).then(data => {
-                const badge = document.getElementById('navDownloadedBadge');
-                if (badge) badge.textContent = data.total || 0;
-            }).catch(() => {});
-        }
-        document.addEventListener('DOMContentLoaded', updateNavBadge);
 
         dropZone.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', () => {
@@ -2420,12 +2305,15 @@
                 window.history.pushState({ tab: 'fetch' }, '', '/');
             }
 
-            if (window.innerWidth < 768) {
-                const sidebar = document.getElementById('sidebar');
-                const overlay = document.getElementById('sidebarOverlay');
-                if (sidebar) sidebar.classList.add('-translate-x-full');
-                if (overlay) overlay.classList.add('hidden');
+            if (navTabFetch) {
+                if (tabName === 'upload') navTabFetch.removeAttribute('aria-current');
+                else navTabFetch.setAttribute('aria-current', 'page');
             }
+            if (navTabUpload) {
+                if (tabName === 'upload') navTabUpload.setAttribute('aria-current', 'page');
+                else navTabUpload.removeAttribute('aria-current');
+            }
+            if (window.innerWidth < 768) toggleMobileSidebar(false);
         }
 
         window.addEventListener('popstate', (e) => {

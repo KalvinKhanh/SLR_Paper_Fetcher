@@ -1,0 +1,64 @@
+name: slr-paper-fetcher
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    restart: unless-stopped
+    depends_on:
+      - grobid
+      - ollama
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8543}:8543"
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8543
+      APP_ENV_FILE: /app/data/.env
+      AUTO_OPEN_BROWSER: "false"
+      DOWNLOAD_FOLDER: /app/downloads
+      VNU_BROWSER_CHANNEL: chromium
+      VNU_BROWSER_HEADLESS: "true"
+      VNU_ALLOW_MANUAL_VERIFICATION: "false"
+      VNU_BROWSER_STATE_FILE: /app/data/vnu-browser-state.json
+      VNU_BROWSER_PROFILE_DIR: /app/.vnu-browser-profile
+      VNU_LIBRARY_ID: ${VNU_LIBRARY_ID:-}
+      VNU_LIBRARY_PASSWORD: ${VNU_LIBRARY_PASSWORD:-}
+      VNU_OPENATHENS_BASE_URL: ${VNU_OPENATHENS_BASE_URL:-https://go.openathens.net/redirector/vnu.edu.vn?url=}
+      UNPAYWALL_EMAIL: ${UNPAYWALL_EMAIL:-bot@vnulib.edu.vn}
+      ELSEVIER_API_KEY: ${ELSEVIER_API_KEY:-}
+      ELSEVIER_INST_TOKEN: ${ELSEVIER_INST_TOKEN:-}
+      OPENALEX_API_KEY: ${OPENALEX_API_KEY:-}
+    volumes:
+      - app-data:/app/data
+      - paper-downloads:/app/downloads
+      - browser-profile:/app/.vnu-browser-profile
+    shm_size: 1gb
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8543/api/health', timeout=3)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  grobid:
+    image: grobid/grobid:0.9.1-crf
+    platform: linux/amd64
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+
+volumes:
+  app-data:
+  paper-downloads:
+  browser-profile:
+  ollama-models:

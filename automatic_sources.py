@@ -129,6 +129,12 @@ def download_public_copy(doi, title, output_path, progress_callback=None, status
         success, message = try_source(info)
         if success:
             return success, message
+    from downloader_engine import publisher_pdf_candidates
+    constructed = publisher_pdf_candidates(doi)
+    if constructed:
+        success, message = try_source({"urls": constructed, "source": "đường dẫn PDF chuẩn của nhà xuất bản"})
+        if success:
+            return success, message
     from paper_io import safe_message
     details = " Phản hồi nguồn: " + "; ".join(failures[-3:]) if failures else ""
     return False, safe_message("Chưa tìm được PDF tải được từ các nguồn toàn văn công khai." + details)

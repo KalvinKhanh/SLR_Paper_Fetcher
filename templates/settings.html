@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings | SLR Paper Fetcher</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>body{font-family:Inter,system-ui,sans-serif}</style>
+  <script src="/static/js/sidebar.js" defer></script>
+</head>
+<body class="flex min-h-screen flex-col overflow-x-hidden bg-slate-50 text-slate-800 md:flex-row">
+  {% set sidebar_active_tab = 'settings' %}
+  {% set sidebar_workspace_mode = false %}
+  {% set sidebar_show_utilities = false %}
+  {% include "components/sidebar.html" %}
+  <div class="flex min-h-screen min-w-0 flex-1 flex-col">
+    <header class="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-md sm:px-6">
+      <div class="flex min-w-0 items-center gap-3">
+        <button type="button" onclick="toggleMobileSidebar()" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false" data-sidebar-toggle class="rounded-xl p-2 text-slate-600 hover:bg-slate-100 md:hidden">
+          <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div class="flex min-w-0 items-center gap-2 text-xs font-medium text-slate-500"><span>Workspace</span><span class="text-slate-300">/</span><span class="font-bold text-slate-800">Settings</span></div>
+      </div>
+      <nav aria-label="Feature navigation" class="hidden shrink-0 items-center gap-1 rounded-xl bg-slate-100 p-1 text-xs font-semibold sm:flex sm:text-sm">
+        <a href="/" class="rounded-lg px-3 py-2 text-slate-600 hover:bg-white">Search</a>
+        <a href="/upload" class="rounded-lg px-3 py-2 text-slate-600 hover:bg-white">Paper Library</a>
+        <a href="/analysis" class="rounded-lg px-3 py-2 text-slate-600 hover:bg-white">AI Analysis</a>
+      </nav>
+    </header>
+    <main class="mx-auto w-full max-w-4xl flex-1 px-4 py-7 sm:px-6 sm:py-10">
+      <div class="mb-7">
+        <p class="text-xs font-bold uppercase tracking-[.16em] text-blue-600">Preferences</p>
+        <h1 class="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Settings</h1>
+        <p class="mt-2 text-sm leading-6 text-slate-500">Choose which AI provider to use for new paper analyses and manage its connection details.</p>
+      </div>
+
+      <form id="aiSettingsForm" class="space-y-5">
+        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+          <div class="mb-5">
+            <h2 class="text-base font-bold text-slate-900">AI analysis</h2>
+            <p class="mt-1 text-sm text-slate-500">The selected provider becomes the default on the AI Analysis page.</p>
+          </div>
+          <label for="defaultProvider" class="mb-2 block text-sm font-semibold text-slate-700">Default provider</label>
+          <select id="defaultProvider" name="default_provider" class="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:max-w-md">
+            <option value="ollama">Ollama (local)</option>
+            <option value="gemini">Gemini API</option>
+          </select>
+        </section>
+
+        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+          <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+            <div><h2 class="text-base font-bold text-slate-900">Ollama</h2><p class="mt-1 text-sm text-slate-500">Run analysis with a model hosted on your computer or local network.</p></div>
+            <span id="ollamaStatus" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">Checking connection...</span>
+          </div>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label for="ollamaUrl" class="mb-2 block text-sm font-semibold text-slate-700">Ollama URL</label>
+              <input id="ollamaUrl" name="ollama_url" type="url" required maxlength="500" placeholder="http://127.0.0.1:11434" class="w-full rounded-xl border border-slate-300 px-3.5 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+            </div>
+            <div>
+              <label for="ollamaModel" class="mb-2 block text-sm font-semibold text-slate-700">Model name</label>
+              <input id="ollamaModel" name="ollama_model" type="text" required maxlength="200" placeholder="qwen2.5:7b" class="w-full rounded-xl border border-slate-300 px-3.5 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+            </div>
+          </div>
+        </section>
+
+        <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+          <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+            <div><h2 class="text-base font-bold text-slate-900">Gemini API</h2><p class="mt-1 text-sm text-slate-500">Add a Google AI Studio API key to use Gemini for paper analysis.</p></div>
+            <span id="geminiStatus" class="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">Not configured</span>
+          </div>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label for="geminiModel" class="mb-2 block text-sm font-semibold text-slate-700">Model name</label>
+              <input id="geminiModel" name="gemini_model" type="text" required maxlength="200" placeholder="gemini-2.5-flash" class="w-full rounded-xl border border-slate-300 px-3.5 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+            </div>
+            <div>
+              <label for="geminiApiKey" class="mb-2 block text-sm font-semibold text-slate-700">API key</label>
+              <input id="geminiApiKey" name="gemini_api_key" type="password" autocomplete="new-password" maxlength="4096" placeholder="Paste a new key to replace the saved key" class="w-full rounded-xl border border-slate-300 px-3.5 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+              <p id="keyHelp" class="mt-2 text-xs leading-5 text-slate-500">The saved key is never shown here. Leave this blank to keep the current key.</p>
+            </div>
+          </div>
+          <label id="clearKeyRow" class="mt-4 hidden items-center gap-2 text-sm text-slate-600"><input id="clearGeminiKey" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500">Remove the saved Gemini API key</label>
+          <p class="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">The key is stored in this app's local .env file and used by the server. It is not returned to the browser.</p>
+        </section>
+
+        <div class="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p id="saveMessage" role="status" aria-live="polite" class="min-h-5 text-sm text-slate-500"></p>
+          <button id="saveSettings" type="submit" class="inline-flex min-h-11 items-center justify-center rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60">Save settings</button>
+        </div>
+      </form>
+    </main>
+  </div>
+  <script>
+    const form = document.getElementById('aiSettingsForm');
+    const keyInput = document.getElementById('geminiApiKey');
+    const clearKey = document.getElementById('clearGeminiKey');
+    const clearKeyRow = document.getElementById('clearKeyRow');
+    const saveMessage = document.getElementById('saveMessage');
+    const setGeminiConfigured = configured => {
+      const status = document.getElementById('geminiStatus');
+      status.textContent = configured ? 'API key saved' : 'Not configured';
+      status.className = configured
+        ? 'rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700'
+        : 'rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700';
+      clearKeyRow.classList.toggle('hidden', !configured);
+      clearKeyRow.classList.toggle('flex', configured);
+    };
+
+    async function loadSettings() {
+      try {
+        const response = await fetch('/api/analysis/config');
+        const config = await response.json();
+        if (!response.ok) throw new Error(config.error || 'Could not load settings.');
+        document.getElementById('defaultProvider').value = config.default_provider || 'ollama';
+        document.getElementById('ollamaUrl').value = config.ollama_url || 'http://127.0.0.1:11434';
+        document.getElementById('ollamaModel').value = config.ollama_model || 'qwen2.5:7b';
+        document.getElementById('geminiModel').value = config.gemini_model || 'gemini-2.5-flash';
+        setGeminiConfigured(Boolean(config.gemini_configured));
+        const ollamaStatus = document.getElementById('ollamaStatus');
+        ollamaStatus.textContent = config.ollama_ready ? 'Connected' : 'Not connected';
+        ollamaStatus.className = config.ollama_ready
+          ? 'rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700'
+          : 'rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600';
+      } catch (error) {
+        saveMessage.textContent = error.message || 'Could not load settings.';
+        saveMessage.className = 'min-h-5 text-sm text-rose-600';
+      }
+    }
+
+    clearKey.addEventListener('change', () => {
+      keyInput.disabled = clearKey.checked;
+      if (clearKey.checked) keyInput.value = '';
+    });
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const button = document.getElementById('saveSettings');
+      button.disabled = true;
+      saveMessage.textContent = 'Saving settings...';
+      saveMessage.className = 'min-h-5 text-sm text-slate-500';
+      const payload = {
+        default_provider: document.getElementById('defaultProvider').value,
+        ollama_url: document.getElementById('ollamaUrl').value.trim(),
+        ollama_model: document.getElementById('ollamaModel').value.trim(),
+        gemini_model: document.getElementById('geminiModel').value.trim(),
+        gemini_api_key: keyInput.value,
+        clear_gemini_key: clearKey.checked
+      };
+      try {
+        const response = await fetch('/api/analysis/config', {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Could not save settings.');
+        keyInput.value = '';
+        clearKey.checked = false;
+        keyInput.disabled = false;
+        setGeminiConfigured(Boolean(result.config.gemini_configured));
+        saveMessage.textContent = 'Settings saved.';
+        saveMessage.className = 'min-h-5 text-sm text-emerald-700';
+      } catch (error) {
+        saveMessage.textContent = error.message || 'Could not save settings.';
+        saveMessage.className = 'min-h-5 text-sm text-rose-600';
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    loadSettings();
+  </script>
+</body>
+</html>

@@ -66,6 +66,7 @@ async def _analysis_worker():
 async def lifespan(app):
     global _ANALYSIS_QUEUE, _ANALYSIS_WORKER, _BROWSER_START_TASK, _UI_OPEN_TASK
     get_store()
+    await asyncio.to_thread(get_store().recover_interrupted_downloads)
     _ANALYSIS_QUEUE = asyncio.Queue()
     for analysis in await asyncio.to_thread(get_store().list_analyses):
         if analysis["status"] == "PENDING":
@@ -135,6 +136,8 @@ async def lifespan(app):
     await browser_manager.shutdown()
 
 app = FastAPI(title="SLR Paper Fetcher", lifespan=lifespan)
+os.makedirs("static", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 def _publisher_url_from_message(message: str) -> Optional[str]:
     match = re.search(r"URL='([^']+)'", message or "")
@@ -178,7 +181,42 @@ async def upload_page(request: Request):
 
 @app.get("/analysis", response_class=HTMLResponse)
 async def analysis_page(request: Request):
-    return templates.TemplateResponse(request=request, name="analysis.html", context={})
+    response = templates.TemplateResponse(request=request, name="analysis.html", context={"paper_detail_mode": False, "active_tab": "analysis", "vnu_configured": bool(settings.VNU_LIBRARY_ID and settings.VNU_LIBRARY_PASSWORD)})
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return response
+
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    return templates.TemplateResponse(request=request, name="settings.html", context={
+        "active_tab": "settings",
+        "vnu_configured": bool(settings.VNU_LIBRARY_ID and settings.VNU_LIBRARY_PASSWORD),
+    })
+
+
+@app.get("/analysis/paper/{doi:path}", response_class=HTMLResponse)
+async def paper_analysis_page(request: Request, doi: str):
+    normalized = extract_doi(doi)
+    if not normalized:
+        return HTMLResponse("Invalid paper identifier.", status_code=404)
+    response = templates.TemplateResponse(request=request, name="analysis.html", context={
+        "paper_detail_mode": True, "paper_id": normalized, "active_tab": "analysis",
+        "vnu_configured": bool(settings.VNU_LIBRARY_ID and settings.VNU_LIBRARY_PASSWORD),
+    })
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return response
+
+
+@app.get("/api/analysis/pdf/{doi:path}")
+async def analysis_pdf(doi: str):
+    normalized = extract_doi(doi)
+    if not normalized:
+        return JSONResponse({"error": "Invalid DOI."}, status_code=400)
+    record = await asyncio.to_thread(get_store().downloaded, normalized)
+    if not record:
+        return JSONResponse({"error": "A valid saved PDF is not available for this paper."}, status_code=404)
+    return FileResponse(path=record["file_path"], media_type="application/pdf",
+                        headers={"Content-Disposition": "inline"})
 
 
 @app.get("/api/analysis/papers")
@@ -197,6 +235,8 @@ async def analysis_papers():
         analysis = analyses.get(record["doi"], {})
         papers.append({
             "doi": record["doi"], "title": metadata.get("title") or record["doi"],
+            "authors": metadata.get("authors") or "", "year": metadata.get("year") or "",
+            "journal": metadata.get("journal") or metadata.get("venue") or "",
             "filename": record.get("filename") or "", "provider": record.get("provider") or "",
             "analysis_status": analysis.get("status", "NOT_STARTED"),
             "analysis_provider": analysis.get("provider") or "",
@@ -219,13 +259,81 @@ async def analysis_config():
         asyncio.to_thread(reachable, f"{settings.GROBID_URL}/api/isalive"),
         asyncio.to_thread(reachable, f"{settings.OLLAMA_URL}/api/tags"),
     )
-    return {
+    return JSONResponse({
         "default_provider": settings.AI_DEFAULT_PROVIDER if settings.AI_DEFAULT_PROVIDER in {"ollama", "gemini"} and (settings.AI_DEFAULT_PROVIDER != "gemini" or settings.GEMINI_API_KEY) else "ollama",
+        "ollama_url": settings.OLLAMA_URL,
         "ollama_model": settings.OLLAMA_MODEL,
         "gemini_model": settings.GEMINI_MODEL,
         "gemini_configured": bool(settings.GEMINI_API_KEY),
         "grobid_ready": grobid_ready,
         "ollama_ready": ollama_ready,
+    }, headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/analysis/config")
+async def update_analysis_config(request: Request):
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"success": False, "error": "Invalid JSON configuration."}, status_code=400)
+    if not isinstance(data, dict):
+        return JSONResponse({"success": False, "error": "Configuration must be a JSON object."}, status_code=400)
+
+    provider = str(data.get("default_provider") or "").strip().lower()
+    ollama_url = str(data.get("ollama_url") or "").strip().rstrip("/")
+    ollama_model = str(data.get("ollama_model") or "").strip()
+    gemini_model = str(data.get("gemini_model") or "").strip()
+    api_key = str(data.get("gemini_api_key") or "").strip()
+    clear_api_key = data.get("clear_gemini_key") is True
+
+    if provider not in {"ollama", "gemini"}:
+        return JSONResponse({"success": False, "error": "Choose Ollama or Gemini as the default provider."}, status_code=400)
+    try:
+        parsed_url = urlparse(ollama_url)
+    except ValueError:
+        return JSONResponse({"success": False, "error": "Enter a valid Ollama URL starting with http:// or https://."}, status_code=400)
+    if parsed_url.scheme not in {"http", "https"} or not parsed_url.hostname or parsed_url.username or parsed_url.password or len(ollama_url) > 500:
+        return JSONResponse({"success": False, "error": "Enter a valid Ollama URL starting with http:// or https://."}, status_code=400)
+    if not ollama_model or len(ollama_model) > 200 or not gemini_model or len(gemini_model) > 200:
+        return JSONResponse({"success": False, "error": "Model names must be between 1 and 200 characters."}, status_code=400)
+    if len(api_key) > 4096 or "\n" in api_key or "\r" in api_key:
+        return JSONResponse({"success": False, "error": "The Gemini API key is invalid."}, status_code=400)
+
+    next_api_key = "" if clear_api_key else (api_key or settings.GEMINI_API_KEY)
+    if provider == "gemini" and not next_api_key:
+        return JSONResponse({"success": False, "error": "Enter a Gemini API key before choosing Gemini."}, status_code=400)
+
+    try:
+        from config import ENV_PATH
+        from dotenv import set_key
+        for key, value in (
+            ("AI_DEFAULT_PROVIDER", provider),
+            ("OLLAMA_URL", ollama_url),
+            ("OLLAMA_MODEL", ollama_model),
+            ("GEMINI_MODEL", gemini_model),
+            ("GEMINI_API_KEY", next_api_key),
+        ):
+            result = set_key(str(ENV_PATH), key, value, quote_mode="always")
+            if not result[0]:
+                raise OSError(f"Could not persist {key} to .env")
+    except Exception as exc:
+        print(f"[AI CONFIG] Could not save settings: {exc}")
+        return JSONResponse({"success": False, "error": "Could not save settings to the local .env file."}, status_code=500)
+
+    settings.AI_DEFAULT_PROVIDER = provider
+    settings.OLLAMA_URL = ollama_url
+    settings.OLLAMA_MODEL = ollama_model
+    settings.GEMINI_MODEL = gemini_model
+    settings.GEMINI_API_KEY = next_api_key
+    return {
+        "success": True,
+        "config": {
+            "default_provider": provider,
+            "ollama_url": ollama_url,
+            "ollama_model": ollama_model,
+            "gemini_model": gemini_model,
+            "gemini_configured": bool(next_api_key),
+        },
     }
 
 

@@ -1,0 +1,43 @@
+<div id="sidebarOverlay" onclick="toggleMobileSidebar()" class="fixed inset-0 z-20 hidden bg-slate-900/40 backdrop-blur-xs transition-opacity md:hidden"></div>
+<aside id="sidebar" class="fixed left-0 top-0 z-30 flex h-screen w-64 shrink-0 -translate-x-full flex-col border-r border-slate-200/90 bg-white transition-transform duration-300 md:sticky md:translate-x-0 xl:w-72">
+  <div class="flex h-16 items-center justify-between border-b border-slate-100 px-5">
+    <div class="flex items-center gap-3">
+      <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-base font-extrabold text-white shadow-sm shadow-blue-500/20">S</div>
+      <div><span class="block text-sm font-bold tracking-tight text-slate-900">SLR Fetcher</span><span class="block text-[10px] font-medium text-slate-500">Systematic Review Tool</span></div>
+    </div>
+    <button type="button" onclick="toggleMobileSidebar(false)" aria-label="Close navigation" class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 md:hidden">
+      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="flex-1 overflow-y-auto px-3 py-5">
+    <p class="mb-2 px-3 text-xs font-medium text-slate-500">Menu</p>
+    <nav aria-label="Main navigation" class="space-y-1.5">
+      <a id="navTabFetch" href="/" {% if sidebar_workspace_mode|default(false) %}onclick="switchTab(event, 'fetch')"{% endif %} {% if sidebar_active_tab == 'fetch' %}aria-current="page"{% endif %} class="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-xs font-semibold transition-all {% if sidebar_active_tab == 'fetch' %}border border-blue-100/80 bg-blue-50 font-bold text-blue-700 shadow-sm shadow-blue-500/5{% else %}text-slate-600 hover:bg-slate-100/70 hover:text-slate-900{% endif %}">
+        <span id="navIconFetch" class="flex h-7 w-7 items-center justify-center rounded-lg {% if sidebar_active_tab == 'fetch' %}bg-blue-600 text-white shadow-sm shadow-blue-500/20{% else %}bg-slate-100 text-slate-500{% endif %}" aria-hidden="true"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg></span>
+        <span>Search &amp; Download</span>
+        <span id="scanRunningBadge" class="ml-auto hidden items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-600"></span><span>Scanning</span></span>
+      </a>
+      <a id="navTabUpload" href="/upload" {% if sidebar_workspace_mode|default(false) %}onclick="switchTab(event, 'upload')"{% endif %} {% if sidebar_active_tab == 'upload' %}aria-current="page"{% endif %} class="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-xs font-semibold transition-all {% if sidebar_active_tab == 'upload' %}border border-indigo-100/80 bg-indigo-50 font-bold text-indigo-700 shadow-sm shadow-indigo-500/5{% else %}text-slate-600 hover:bg-slate-100/70 hover:text-slate-900{% endif %}">
+        <span id="navIconUpload" class="flex h-7 w-7 items-center justify-center rounded-lg {% if sidebar_active_tab == 'upload' %}bg-indigo-600 text-white shadow-sm shadow-indigo-500/20{% else %}bg-slate-100 text-slate-500{% endif %}" aria-hidden="true"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg></span>
+        <span>Paper Library</span>
+        <span id="navDownloadedBadge" class="ml-auto rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">...</span>
+      </a>
+      <a href="/analysis" {% if sidebar_active_tab == 'analysis' %}aria-current="page"{% endif %} class="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-xs font-semibold transition-all {% if sidebar_active_tab == 'analysis' %}border border-violet-100/80 bg-violet-50 font-bold text-violet-700 shadow-sm shadow-violet-500/5{% else %}text-slate-600 hover:bg-slate-100/70 hover:text-slate-900{% endif %}">
+        <span id="navIconAnalysis" class="flex h-7 w-7 items-center justify-center rounded-lg {% if sidebar_active_tab == 'analysis' %}bg-violet-600 text-white shadow-sm shadow-violet-500/20{% else %}bg-slate-100 text-slate-500{% endif %}" aria-hidden="true"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3l1.5 6.5L20 12l-6.5 1.5L12 20l-1.5-6.5L4 12l6.5-2.5L12 3z"/></svg></span><span>AI Analysis</span>
+      </a>
+    </nav>
+    <section class="mt-6" aria-label="Shortcuts">
+      <p class="mb-2 px-3 text-xs font-medium text-slate-500">Shortcuts</p>
+      <div class="space-y-1">
+        {% if sidebar_show_utilities|default(false) %}
+        <button type="button" onclick="restoreSavedResults()" class="flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left text-xs font-medium text-slate-600 transition-all hover:bg-slate-100/70 hover:text-slate-900"><span class="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-500" aria-hidden="true"><svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 014.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></span><span>Restore saved list</span></button>
+        {% endif %}
+        <a id="navSettings" href="/settings" {% if sidebar_active_tab == 'settings' %}aria-current="page"{% endif %} class="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-xs font-semibold transition-all {% if sidebar_active_tab == 'settings' %}border border-slate-300 bg-slate-100 font-bold text-slate-800{% else %}text-slate-600 hover:bg-slate-100/70 hover:text-slate-900{% endif %}"><span class="flex h-7 w-7 items-center justify-center rounded-lg {% if sidebar_active_tab == 'settings' %}bg-slate-700 text-white{% else %}bg-slate-100 text-slate-500{% endif %}" aria-hidden="true"><svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.4 15a1.7 1.7 0 00.34 1.88l.06.06-1.7 2.94-.08-.02a1.7 1.7 0 00-1.8.56l-.05.07h-3.4l-.04-.07a1.7 1.7 0 00-1.8-.56l-.08.02-1.7-2.94.06-.06A1.7 1.7 0 009.56 15l-.02-.08v-3.4l.02-.04a1.7 1.7 0 00-.56-1.8l-.06-.05 1.7-2.94.08.02a1.7 1.7 0 001.8-.56l.04-.07h3.4l.05.07a1.7 1.7 0 001.8.56l.08-.02 1.7 2.94-.06.05a1.7 1.7 0 00-.34 1.8l.02.04v3.4z"/></svg></span><span>Settings</span></a>
+      </div>
+    </section>
+  </div>
+  <div class="mt-auto space-y-3 border-t border-slate-100 px-3 py-4">
+    {% if vnu_configured is defined %}<div class="rounded-xl border border-slate-200/70 bg-slate-50 p-3 text-xs"><div class="mb-1.5 flex items-center justify-between"><span class="font-semibold text-slate-700">VNU Library</span>{% if vnu_configured %}<span class="inline-flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700"><span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>Connected</span>{% else %}<span class="inline-flex items-center gap-1 rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700"><span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>Not configured</span>{% endif %}</div><p class="text-[11px] text-slate-500">OpenAthens HCM</p></div>{% endif %}
+    <div class="px-2 text-center text-[10px] font-medium text-slate-400">SLR Paper Fetcher</div>
+  </div>
+</aside>
