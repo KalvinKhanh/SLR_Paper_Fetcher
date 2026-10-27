@@ -12,7 +12,7 @@ function InformationNode({ id, data, selected }: NodeProps<AifFlowNode>) {
     <NodeHandles node={node} />
     <header className="aif-flow-node__header"><span>I · {roleLabel}</span><span className={`aif-flow-node__status is-${data.reviewStatus.toLowerCase().replaceAll('_', '-')}`}>{data.reviewStatus.replaceAll('_', ' ')}</span></header>
     <div className="aif-flow-node__content">{data.text || 'No information text supplied.'}</div>
-    <footer className="aif-flow-node__footer">{String(data.originalNode.metadata?.assertion_origin || 'Explicit source').replaceAll('_', ' ')}</footer>
+    <footer className="aif-flow-node__footer">{String(data.originalNode.metadata?.assertion_origin || 'Explicit source').replaceAll('_', ' ')}{data.groundedLabel ? <span className={`aif-grounded-badge is-${data.groundedLabel.toLowerCase()}`}> {data.groundedLabel}</span> : null}</footer>
   </article>;
 }
 

@@ -5,6 +5,7 @@ import os
 import re
 import io
 import json
+from datetime import datetime, timezone
 import webbrowser
 import threading
 import subprocess
@@ -20,7 +21,7 @@ import pandas as pd
 from config import settings
 from config import BASE_DIR
 from contextlib import asynccontextmanager
-from paper_io import download_path, safe_filename, valid_pdf_file, safe_message, public_url, institutional_url, generate_standardized_filename
+from paper_io import download_path, safe_filename, valid_pdf_file, safe_message, public_url, institutional_url, generate_standardized_filename, normalize_doi
 from paper_store import get_store
 from doi_resolver import resolve_doi
 from browser_session import browser_manager, browser_worker
@@ -388,6 +389,131 @@ async def edit_analysis_item(doi: str, request: Request):
     return {"success": True}
 
 
+@app.post("/api/analysis/mvp3/{doi:path}")
+async def evaluate_mvp3(doi: str, request: Request):
+    normalized = extract_doi(doi)
+    if not normalized:
+        return JSONResponse({"error": "Invalid DOI."}, status_code=400)
+    body = await request.json()
+    argument_id = str(body.get("argument_id") or "").strip()
+    if not argument_id:
+        return JSONResponse({"error": "Select one argument before running MVP3."}, status_code=400)
+    provider = str(body.get("provider") or settings.AI_DEFAULT_PROVIDER or "ollama").strip().lower()
+    if provider not in {"ollama", "gemini"}:
+        return JSONResponse({"error": "Invalid AI provider."}, status_code=400)
+    if provider == "gemini" and not settings.GEMINI_API_KEY:
+        return JSONResponse({"error": "GEMINI_API_KEY is not configured in .env."}, status_code=400)
+    store = get_store()
+    run = await asyncio.to_thread(store.get_argumentation, normalized)
+    if not run:
+        return JSONResponse({"error": "No saved argument analysis is available."}, status_code=404)
+    if not any(item.get("id") == argument_id for item in run.get("analysis_payload", {}).get("arguments", [])):
+        return JSONResponse({"error": "The selected argument is not part of this analysis."}, status_code=404)
+
+    document_metadata = run.get("document_metadata", {})
+    selected_argument = next(item for item in run.get("analysis_payload", {}).get("arguments", [])
+                             if item.get("id") == argument_id)
+    selected_proposition = next((item for item in run.get("propositions", [])
+                                 if item.get("id") == selected_argument.get("claim_proposition_id")), {})
+    source_quote = " ".join((selected_proposition.get("source_quote") or "").split()).casefold()
+    relevant_reference_ids = {
+        str(reference_id).lstrip("#")
+        for callout in document_metadata.get("citation_callouts", [])
+        if " ".join((callout.get("marker") or "").split()).casefold() in source_quote
+        for reference_id in callout.get("reference_ids", [])
+    }
+    reference_sources = {}
+    for entry in document_metadata.get("bibliography", []):
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("reference_id") or "").lstrip("#") not in relevant_reference_ids:
+            continue
+        cited_doi = normalize_doi(entry.get("doi"))
+        if not cited_doi or cited_doi in reference_sources:
+            continue
+        cited_run = await asyncio.to_thread(store.get_argumentation, cited_doi)
+        sections = (cited_run or {}).get("sections", [])
+        section_priority = {"abstract": 0, "results": 1, "discussion": 2, "conclusion": 3,
+                            "methods": 4, "introduction": 5}
+        ordered_sections = sorted(sections, key=lambda section: section_priority.get(section.get("section_type"), 6))
+        section_parts, remaining, original_characters = [], 8000, 0
+        for section in ordered_sections:
+            text = (section.get("text") or "").strip()
+            original_characters += len(text)
+            if text and remaining > 0:
+                part = ((section.get("heading") or "") + "\n" + text)[:remaining]
+                section_parts.append(part)
+                remaining -= len(part)
+        section_text = "\n\n".join(section_parts)
+        if not section_text:
+            continue
+        metadata = (cited_run or {}).get("document_metadata", {})
+        reference_sources[cited_doi] = {
+            "source_type": "local_full_text",
+            "source_title": metadata.get("title") or entry.get("title"),
+            "source_uri": "https://doi.org/" + cited_doi,
+            "retrieved_at": datetime.now(timezone.utc).isoformat(),
+            "source_text": section_text,
+            "source_excerpt": section_text[:700],
+            "source_character_count": original_characters,
+            "full_text_available": True,
+        }
+    from ai_analysis import run_mvp3_evaluation
+    try:
+        evaluation = await asyncio.to_thread(
+            run_mvp3_evaluation, run.get("propositions", []), run.get("graph", {}),
+            run.get("analysis_payload", {}), run.get("document_metadata", {}), provider,
+            argument_id, reference_sources,
+        )
+        evaluation.setdefault("provenance", {})["analysis_run_id"] = run["id"]
+        saved = await asyncio.to_thread(store.save_mvp3_evaluation, normalized, evaluation)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)[:500]}, status_code=502)
+    if not saved:
+        return JSONResponse({"error": "The analysis run changed before MVP3 results could be saved."}, status_code=409)
+    refreshed = await asyncio.to_thread(store.get_argumentation, normalized)
+    return {"success": True, "mvp3": (refreshed or {}).get("analysis_payload", {}).get("mvp3", saved)}
+
+
+@app.post("/api/analysis/rubric-review/{doi:path}")
+async def review_mvp3_rubric(doi: str, request: Request):
+    normalized = extract_doi(doi)
+    if not normalized:
+        return JSONResponse({"error": "Invalid DOI."}, status_code=400)
+    body = await request.json()
+    score = body.get("score")
+    try:
+        accepted = await asyncio.to_thread(get_store().save_rubric_review, normalized,
+            str(body.get("argument_id") or ""), str(body.get("dimension") or ""), score,
+            str(body.get("reviewer") or ""), str(body.get("rationale") or ""))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    if not accepted:
+        return JSONResponse({"error": "The selected argument is not part of this analysis."}, status_code=404)
+    refreshed = await asyncio.to_thread(get_store().get_argumentation, normalized)
+    return {"success": True, "mvp3": (refreshed or {}).get("analysis_payload", {}).get("mvp3", {})}
+
+
+@app.post("/api/analysis/citation-review/{doi:path}")
+async def review_mvp3_citation(doi: str, request: Request):
+    normalized = extract_doi(doi)
+    if not normalized:
+        return JSONResponse({"error": "Invalid DOI."}, status_code=400)
+    body = await request.json()
+    try:
+        accepted = await asyncio.to_thread(get_store().save_citation_review, normalized,
+            str(body.get("citation_id") or ""), str(body.get("status") or ""),
+            str(body.get("reviewer") or ""), str(body.get("rationale") or ""))
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    if not accepted:
+        return JSONResponse({"error": "The selected citation verification is not part of this analysis."}, status_code=404)
+    refreshed = await asyncio.to_thread(get_store().get_argumentation, normalized)
+    return {"success": True, "mvp3": (refreshed or {}).get("analysis_payload", {}).get("mvp3", {})}
+
+
 @app.get("/api/analysis/export/{doi:path}")
 async def export_argumentation(doi: str):
     normalized = extract_doi(doi)
@@ -402,8 +528,12 @@ async def export_argumentation(doi: str):
     edges = [{"edgeID": edge["id"], "fromID": edge["source_node_id"], "toID": edge["target_node_id"]}
              for edge in graph["edges"]]
     return {"format": "AIF-compatible internal graph JSON", "run_id": run["id"],
-            "version": graph["version"], "provenance": {"provider": run.get("provider"),
+            "version": graph["version"], "schema_version": graph.get("schema_version", 1),
+            "provenance": {"provider": run.get("provider"),
             "model": run.get("model"), "prompt_versions": run.get("prompt_versions")},
+            "validation": graph.get("validation", run.get("validation", {})),
+            "argumentationFramework": graph.get("semantics", {}),
+            "mvp3Evaluation": run.get("analysis_payload", {}).get("mvp3"),
             "AIF": {"nodes": nodes, "edges": edges}}
 
 
@@ -480,21 +610,35 @@ async def review_argument_graph():
         if item["relationship"] == "supports":
             ra_id = "ra:cross:" + item["id"]
             nodes.append({"nodeID": ra_id, "type": "RA", "text": "Cross-paper support",
+                          "relation_id": item["id"],
                           "metadata": {"relationshipId": item["id"], "explanation": item["explanation"],
                                        "sourcePaperId": item["source_doi"], "targetPaperId": item["target_doi"],
                                        "sourceQuote": item["source_quote"], "targetQuote": item["target_quote"],
                                        "confidence": item["confidence"], "provenance": item["provenance"],
-                                       "reviewStatus": "approved"}})
+                                       "premise_proposition_ids": [source["id"]],
+                                       "conclusion_proposition_id": target["id"],
+                                       "source_evidence": [{"proposition_id": source["id"], "text": source["text"],
+                                           "source_quote": item["source_quote"], "review_status": "approved",
+                                           "provenance": item["provenance"]}],
+                                       "supporting_quote": item["source_quote"], "scheme_id": "cross-paper-support",
+                                       "review_status": "approved", "reviewStatus": "approved"}})
             edges.extend([{"edgeID": "e:cross:source:" + item["id"], "fromID": "i:" + source["id"], "toID": ra_id},
                           {"edgeID": "e:cross:target:" + item["id"], "fromID": ra_id, "toID": "i:" + target["id"]}])
         elif item["relationship"] == "contradicts":
             ca_id = "ca:cross:" + item["id"]
             nodes.append({"nodeID": ca_id, "type": "CA", "text": "Cross-paper rebuttal",
+                          "relation_id": item["id"],
                           "metadata": {"relationshipId": item["id"], "explanation": item["explanation"],
                                        "sourcePaperId": item["source_doi"], "targetPaperId": item["target_doi"],
                                        "sourceQuote": item["source_quote"], "targetQuote": item["target_quote"],
                                        "confidence": item["confidence"], "provenance": item["provenance"],
-                                       "reviewStatus": "approved"}})
+                                       "attack_type": "rebut", "premise_proposition_ids": [source["id"]],
+                                       "target_proposition_id": target["id"],
+                                       "source_evidence": [{"proposition_id": source["id"], "text": source["text"],
+                                           "source_quote": item["source_quote"], "review_status": "approved",
+                                           "provenance": item["provenance"]}],
+                                       "supporting_quote": item["source_quote"],
+                                       "review_status": "approved", "reviewStatus": "approved"}})
             edges.extend([{"edgeID": "e:cross:source:" + item["id"], "fromID": "i:" + source["id"], "toID": ca_id},
                           {"edgeID": "e:cross:target:" + item["id"], "fromID": ca_id, "toID": "i:" + target["id"]}])
         else:
@@ -502,14 +646,35 @@ async def review_argument_graph():
                 "targetNodeId": "i:" + target["id"], "relationship": item["relationship"],
                 "explanation": item["explanation"], "sourceQuote": item["source_quote"],
                 "targetQuote": item["target_quote"], "reviewStatus": "approved"})
-    from ai_analysis import validate_aif_graph
-    internal_graph = {"nodes": [{"id": node["nodeID"], "node_type": node["type"]} for node in nodes],
-                      "edges": [{"source_node_id": edge["fromID"], "target_node_id": edge["toID"]} for edge in edges]}
+    from ai_analysis import evaluate_aif_semantics, validate_aif_graph
+    internal_nodes = []
+    for node in nodes:
+        metadata = node.get("metadata", {})
+        proposition = by_id.get(node["nodeID"][2:]) if node["nodeID"].startswith("i:") else None
+        if proposition:
+            offsets = proposition.get("source_offsets") or {}
+            source_quote = proposition.get("source_quote")
+            metadata["source_reference"] = {"proposition_id": proposition["id"],
+                "section_id": proposition.get("section_id"), "page": proposition.get("source_page"),
+                "start_offset": offsets.get("start") if isinstance(offsets, dict) else None,
+                "end_offset": offsets.get("end") if isinstance(offsets, dict) else None,
+                "quote": source_quote,
+                "location_complete": bool(source_quote and isinstance(offsets, dict) and
+                    offsets.get("start") is not None and offsets.get("end") is not None)}
+        internal_nodes.append({"id": node["nodeID"], "node_type": node["type"],
+                               "relation_id": node.get("relation_id"), "metadata": metadata})
+    internal_graph = {"nodes": internal_nodes,
+                      "edges": [{"id": edge["edgeID"], "source_node_id": edge["fromID"],
+                                 "target_node_id": edge["toID"]} for edge in edges]}
+    validation = validate_aif_graph(internal_graph)
+    semantics = evaluate_aif_semantics(internal_graph)
+    for node, internal in zip(nodes, internal_nodes):
+        node["metadata"] = internal["metadata"]
     return {"format": "AIF-compatible internal review graph JSON", "version": {
             "paperAnalysisRuns": sorted({graph["run_id"] for graph in paper_graphs}),
             "crossPaperBatch": (cross.get("batch") or {}).get("id")},
         "includedStudyFilter": False,
-        "validation": validate_aif_graph(internal_graph),
+        "validation": validation, "argumentationFramework": semantics,
         "AIF": {"nodes": nodes, "edges": edges}, "semanticLinks": semantic_links}
 
 

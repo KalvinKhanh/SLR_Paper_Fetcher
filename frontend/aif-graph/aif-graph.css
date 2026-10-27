@@ -26,6 +26,7 @@
 .aif-flow-node__s-kind{font-size:22px;font-weight:800;line-height:25px;letter-spacing:.02em}
 .aif-flow-node__s-caption{display:-webkit-box;max-width:104px;overflow:hidden;color:#795a28;font-size:10px;font-weight:700;line-height:12px;text-align:center;text-overflow:ellipsis;-webkit-box-orient:vertical;-webkit-line-clamp:2}
 .aif-flow-node__s-summary{max-width:108px;color:#795a28;font-size:9px;font-weight:550;line-height:11px;text-align:center}
+.aif-grounded-badge{display:inline-block;border:1px solid #c7d2fe;border-radius:999px;background:#eef2ff;padding:1px 5px;color:#4338a4;font-size:8px;font-weight:800;line-height:11px;letter-spacing:.04em;vertical-align:middle}.aif-grounded-badge.is-out{border-color:#fecaca;background:#fff1f2;color:#b42336}.aif-grounded-badge.is-undecided{border-color:#f2d18b;background:#fffbeb;color:#925f08}.aif-flow-node--inference .aif-grounded-badge{z-index:1}
 .aif-flow-node--diamond{display:grid;place-items:center;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);box-shadow:none;border:0;background:transparent}
 .aif-flow-node--diamond::before{position:absolute;inset:0;background:currentColor;content:"";clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
 .aif-flow-node--diamond::after{position:absolute;inset:2px;background:var(--diamond-bg);content:"";clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}

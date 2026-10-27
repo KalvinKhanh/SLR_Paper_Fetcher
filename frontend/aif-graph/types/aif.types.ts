@@ -41,6 +41,7 @@ export interface AifNodeData extends Record<string, unknown> {
   premiseCount?: number;
   conclusionCount?: number;
   reviewStatus: string;
+  groundedLabel?: string;
   sourceHandles: AifHandle[];
   targetHandles: AifHandle[];
   portOffsets?: Record<string, number>;

@@ -7,13 +7,15 @@ candidate relations. Graph construction and structural checks are deterministic.
 import json
 import re
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import requests
 from lxml import etree
 
 from config import settings
-from paper_io import valid_pdf_file
+from paper_io import normalize_doi, valid_pdf_file
 
 
 PROMPT_VERSIONS = {
@@ -23,8 +25,87 @@ PROMPT_VERSIONS = {
     "legacy_review_draft": "1.2",
     "cross_paper_relationship_analysis": "1.2",
     "unified_argument_assessment": "1.0",
+    "citation_verification": "1.0",
+    "scientific_quality_rubric": "1.0",
 }
 ARGUMENT_CARD_SCHEMA_VERSION = 3
+MVP3_RUBRIC_VERSION = "1.0"
+MVP3_DIMENSIONS = (
+    "logical_validity", "evidence_sufficiency", "evidence_credibility",
+    "relevance", "attack_resilience", "scientific_qualification",
+)
+MVP3_RUBRIC_ANCHORS = {
+    "logical_validity": {
+        0: "The stated conclusion conflicts with the supplied premises or inference.",
+        1: "A major reasoning gap prevents the premises from supporting the conclusion.",
+        2: "The reasoning is partly coherent but depends on an unresolved assumption or bridge.",
+        3: "The reasoning is coherent within the stated conditions, with a minor gap.",
+        4: "The reasoning bridge is explicit and the conclusion follows within the stated scope.",
+    },
+    "evidence_sufficiency": {
+        0: "No source evidence is available for the claim.",
+        1: "Evidence is minimal or leaves most of the stated claim unsupported.",
+        2: "Evidence supports part of the claim but leaves a material scope or coverage gap.",
+        3: "Evidence covers the main claim and scope, with a limited remaining gap.",
+        4: "Direct evidence covers the material parts and full stated scope of the claim.",
+    },
+    "evidence_credibility": {
+        0: "The cited source is unavailable or its provenance is not established.",
+        1: "Source or method has major unresolved credibility concerns.",
+        2: "Some source or method information is available, but important limitations remain.",
+        3: "Source and methods appear credible from supplied information, with stated limitations.",
+        4: "Source provenance and methods are clearly described and support credibility checks.",
+    },
+    "relevance": {
+        0: "The supplied evidence does not address the claim.",
+        1: "Evidence has only a weak or indirect connection to the claim.",
+        2: "Evidence is partly relevant but differs on an important population, measure, or condition.",
+        3: "Evidence addresses the main claim with a small context mismatch.",
+        4: "Evidence directly addresses the claim's population, measure, and conditions.",
+    },
+    "attack_resilience": {
+        0: "A material mapped challenge defeats the argument and remains unanswered.",
+        1: "Major mapped challenges are not addressed by the supplied argument.",
+        2: "Some challenges are answered, while material attacks or uncertainties remain.",
+        3: "The main mapped challenges are addressed, with a limited residual concern.",
+        4: "Relevant mapped challenges are answered with source evidence and scoped reasoning.",
+    },
+    "scientific_qualification": {
+        0: "The claim materially overstates certainty, causality, or generality.",
+        1: "Important limits or uncertainty are omitted from the claim.",
+        2: "Some limits are stated, but scope or uncertainty is incompletely qualified.",
+        3: "The claim is mostly bounded to reported conditions and uncertainty.",
+        4: "The claim precisely states scope, uncertainty, metrics, and relevant limitations.",
+    },
+}
+MVP3_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "properties": {
+        "citation_verifications": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+            "properties": {"id": {"type": "string"}, "status": {"type": "string"},
+                "confidence": {"type": "number"}, "rationale": {"type": "string"},
+                "evidence_excerpt": {"type": "string"}},
+            "required": ["id", "status", "confidence", "rationale", "evidence_excerpt"]}},
+        "rubric_assessments": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+            "properties": {"argument_id": {"type": "string"}, "dimensions": {"type": "array", "items": {
+                "type": "object", "additionalProperties": False,
+                "properties": {"dimension": {"type": "string"}, "score": {"type": "integer"},
+                    "score_status": {"type": "string"}, "confidence": {"type": "number"},
+                    "rationale": {"type": "string"}, "evidence_ids": {"type": "array", "items": {"type": "string"}},
+                    "uncertainty": {"type": "string"}},
+                "required": ["dimension", "score", "score_status", "confidence", "rationale", "evidence_ids", "uncertainty"]}}},
+            "required": ["argument_id", "dimensions"]}},
+    }, "required": ["citation_verifications", "rubric_assessments"],
+}
+
+
+def empty_mvp3_payload():
+    return {"schema_version": 1, "status": "not_run", "rubric_version": MVP3_RUBRIC_VERSION,
+            "citation_verifications": [], "citation_reviews": [], "citation_benchmark": {},
+            "rubric_assessments": [], "reviewer_scores": [],
+            "rubric_anchors": MVP3_RUBRIC_ANCHORS,
+            "benchmark": {"reviewer_count": 0, "ready": False, "dimensions": {}},
+            "provenance": None, "stale": False}
 
 ANALYSIS_SCHEMA = {
     "type": "object",
@@ -100,6 +181,37 @@ CROSS_PAPER_SCHEMA = {
 
 def _clean(node):
     return " ".join("".join(node.itertext()).split())
+
+
+def _extract_tei_citations(root):
+    references, reference_ids = [], set()
+    bibliography_nodes = root.xpath("//*[local-name()='listBibl']/*[local-name()='biblStruct' or local-name()='bibl']")
+    for index, node in enumerate(bibliography_nodes, start=1):
+        reference_id = (node.get("id") or node.get("{http://www.w3.org/XML/1998/namespace}id") or f"bibl-{index}").lstrip("#")
+        title_nodes = node.xpath(".//*[local-name()='analytic']/*[local-name()='title'][1] | .//*[local-name()='monogr']/*[local-name()='title'][1]")
+        title = _clean(title_nodes[0]) if title_nodes else ""
+        doi_candidates = [
+            _clean(value) for value in node.xpath(".//*[local-name()='idno'][translate(@type,'DOI','doi')='doi']")
+        ] + [value for value in node.xpath(".//*[local-name()='ptr']/@target")]
+        doi = next((normalized for value in doi_candidates if (normalized := normalize_doi(value))), None)
+        year_nodes = node.xpath(".//*[local-name()='date']/@when | .//*[local-name()='date']/text()")
+        year_match = re.search(r"(?:19|20)\d{2}", " ".join(year_nodes))
+        references.append({"reference_id": reference_id, "title": title or None, "doi": doi,
+            "year": year_match.group(0) if year_match else None, "raw_text": _clean(node),
+            "source": "grobid_tei"})
+        reference_ids.add(reference_id)
+
+    callouts = []
+    for node in root.xpath("//*[local-name()='ref'][@type='bibr' or starts-with(@target, '#')]"):
+        marker = _clean(node)
+        target_ids = [value.lstrip("#") for value in (node.get("target") or "").split() if value]
+        if not marker or not target_ids:
+            continue
+        parent = node.getparent()
+        callouts.append({"marker": marker, "reference_ids": target_ids,
+            "paragraph_context": _clean(parent) if parent is not None else None,
+            "references_resolved": all(reference_id in reference_ids for reference_id in target_ids)})
+    return references, callouts
 
 
 def _section_type(heading):
@@ -188,10 +300,14 @@ def _extract_tei_document(tei: bytes) -> tuple[dict, dict]:
         raise ValueError("GROBID returned no text content for analysis.")
     body_text_length = sum(len(section["text"]) for section in sections[body_start:])
     completeness = "full_text_candidate" if body_text_length >= 1000 else "partial_text"
+    bibliography, citation_callouts = _extract_tei_citations(root)
     return {"sections": sections, "text": "\n\n".join(section["text"] for section in sections),
             "metadata": {"title": title, "authors": authors, "year": year,
                          "completeness": completeness, "body_characters": body_text_length,
-                         "completeness_warning": None if completeness == "full_text_candidate" else "GROBID returned limited or abstract-only text."}}, {
+                         "completeness_warning": None if completeness == "full_text_candidate" else "GROBID returned limited or abstract-only text.",
+                         "bibliography": bibliography, "citation_callouts": citation_callouts,
+                         "citation_extraction": {"source": "grobid_tei", "reference_count": len(bibliography),
+                                                 "callout_count": len(citation_callouts)}}}, {
                 "title": title, "authors": authors, "year": year,
             }
 
@@ -1053,15 +1169,301 @@ def build_unified_analysis(paper_id, propositions, relations):
                 "suggested_verification_condition": "Compare the exact parameter values and outcomes in the cited source before accepting a conflict.",
                 "evidence_ids": [f"e:{pid}" for pid in source_ids], "source_references": source_ids,
                 "source_anchors": exception["source_references"], "review_status": "pending", "comments": []})
-    return {"schema_version": 1, "argument_card_schema_version": ARGUMENT_CARD_SCHEMA_VERSION,
+    return {"schema_version": 2, "argument_card_schema_version": ARGUMENT_CARD_SCHEMA_VERSION,
             "paper_id": paper_id, "evidence_ledger": evidence, "claim_register": claims,
             "arguments": arguments, "quality_assessments": assessments, "reviewer_questions": questions,
+            "mvp3": empty_mvp3_payload(),
             "provenance": {"builder": "deterministic_from_canonical_propositions", "prompt_version": PROMPT_VERSIONS["unified_argument_assessment"]},
             "review_history": [], "derived_data_stale": False}
 
 
+def _crossref_abstract(reference):
+    doi = normalize_doi(reference.get("doi") or "")
+    if not doi:
+        return None
+    metadata_uri = "https://api.crossref.org/works/" + quote(doi, safe="/")
+    try:
+        response = requests.get(metadata_uri, headers={
+            "User-Agent": f"SLR-Paper-Fetcher/1.0 (mailto:{settings.UNPAYWALL_EMAIL})"}, timeout=(5, 15))
+        if response.status_code != 200:
+            return None
+        message = response.json().get("message", {})
+        abstract_markup = message.get("abstract") or ""
+        if not abstract_markup:
+            return None
+        parser = etree.XMLParser(resolve_entities=False, no_network=True, recover=True)
+        try:
+            root = etree.fromstring(("<root>" + abstract_markup + "</root>").encode("utf-8"), parser=parser)
+            abstract = " ".join("".join(root.itertext()).split())
+        except (etree.XMLSyntaxError, ValueError):
+            abstract = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", abstract_markup)).strip()
+        if not abstract:
+            return None
+        titles = message.get("title") or []
+        return {"source_type": "crossref_abstract", "source_title": titles[0] if titles else reference.get("title"),
+            "source_uri": "https://doi.org/" + doi, "metadata_uri": metadata_uri,
+            "retrieved_at": datetime.now(timezone.utc).isoformat(), "source_text": abstract[:12000],
+            "source_excerpt": abstract[:700], "source_character_count": len(abstract),
+            "full_text_available": False}
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        return None
+
+
+def _citation_callouts_for_quote(quote_text, callouts):
+    normalized_quote = " ".join((quote_text or "").split()).casefold()
+    matches = []
+    for callout in callouts:
+        marker = " ".join((callout.get("marker") or "").split()).casefold()
+        if marker and marker in normalized_quote:
+            matches.append(callout)
+    return matches
+
+
+def _citation_verification_inputs(claims, propositions, document_metadata, reference_sources=None):
+    reference_sources = reference_sources or {}
+    references = [item for item in document_metadata.get("bibliography", []) if isinstance(item, dict)]
+    references_by_id = {str(item.get("reference_id")): item for item in references if item.get("reference_id")}
+    callouts = [item for item in document_metadata.get("citation_callouts", []) if isinstance(item, dict)]
+    propositions_by_id = {item.get("id"): item for item in propositions if item.get("id")}
+    source_cache = {}
+    checks, model_checks = [], []
+
+    def add_check(claim, proposition, marker, reference_id, reference, mapping_issue=None):
+        stable_key = f"{proposition.get('id')}|{reference_id or marker or 'no-citation'}"
+        check_id = "cv:" + uuid.uuid5(uuid.NAMESPACE_URL, stable_key).hex
+        doi = normalize_doi((reference or {}).get("doi") or "")
+        source = None
+        if doi:
+            source = reference_sources.get(doi) or source_cache.get(doi)
+            if source is None:
+                source = _crossref_abstract(reference or {"doi": doi})
+                if source:
+                    source_cache[doi] = source
+        citation = {"id": check_id, "claim_id": claim.get("id"), "claim_proposition_id": proposition.get("id"),
+            "claim_text": claim.get("normalized_claim") or proposition.get("text"),
+            "source_quote": proposition.get("source_quote"), "marker": marker,
+            "reference_id": reference_id, "reference_title": (reference or {}).get("title"),
+            "reference_text": (reference or {}).get("raw_text"), "doi": doi or None,
+            "status": "NOT_ENOUGH_INFO", "confidence": 0.0,
+            "rationale": "No retrieved source text is available to compare with this claim.",
+            "evidence_excerpt": None,
+            "mapping_issue": mapping_issue,
+            "source": ({key: value for key, value in source.items() if key != "source_text"} if source else None),
+            "review_status": "pending"}
+        if not marker and not reference_id:
+            citation.update({"status": "NO_CITATION", "rationale": "No citation marker was found in the claim's source quotation."})
+        elif not reference or mapping_issue:
+            citation.update({"status": "UNVERIFIED", "rationale": mapping_issue or "Citation marker could not be linked to a bibliography entry."})
+        elif not doi:
+            citation.update({"status": "UNVERIFIED", "rationale": "The bibliography entry has no verified DOI; no source was retrieved."})
+        elif not source:
+            citation.update({"status": "UNVERIFIED", "rationale": "The DOI was not retrievable as a local full text or a Crossref abstract."})
+        else:
+            citation.update({"source_excerpt": source.get("source_excerpt"), "status": "NOT_ENOUGH_INFO",
+                "rationale": "A source excerpt was retrieved; claim support has not yet been classified."})
+            model_checks.append({"id": check_id, "claim_text": citation["claim_text"], "citation_marker": marker,
+                "reference_title": source.get("source_title") or citation["reference_title"],
+                "doi": doi, "source_type": source.get("source_type"),
+                "source_text": source.get("source_text") or source.get("source_excerpt") or "",
+                "source_uri": source.get("source_uri")})
+        checks.append(citation)
+
+    for claim in claims:
+        proposition = propositions_by_id.get(claim.get("proposition_id"))
+        if not proposition:
+            continue
+        quote_text = proposition.get("source_quote") or proposition.get("text") or ""
+        matched_callouts = _citation_callouts_for_quote(quote_text, callouts)
+        if matched_callouts:
+            seen = set()
+            for callout in matched_callouts:
+                marker = callout.get("marker")
+                for reference_id in callout.get("reference_ids", []):
+                    key = (str(reference_id), marker)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    reference = references_by_id.get(str(reference_id).lstrip("#"))
+                    issue = None if reference else "The GROBID citation target does not match an extracted bibliography entry."
+                    add_check(claim, proposition, marker, str(reference_id).lstrip("#"), reference, issue)
+            continue
+        explicit_markers = re.findall(r"\[[0-9]+(?:\s*[,;–-]\s*[0-9]+)*\]", quote_text)
+        if explicit_markers:
+            for marker in dict.fromkeys(explicit_markers):
+                add_check(claim, proposition, marker, None, None,
+                          "A citation marker is present but GROBID did not provide a resolvable target.")
+        else:
+            add_check(claim, proposition, None, None, None)
+    return checks, model_checks
+
+
+def _mvp3_argument_inputs(arguments, propositions, evidence_ledger, graph, citation_checks, quality_assessments,
+                          claim_register=None):
+    by_id = {item.get("id"): item for item in propositions if item.get("id")}
+    claims_by_prop = {item.get("proposition_id"): item for item in (claim_register or [])}
+    allowed_evidence = {item.get("id") for item in evidence_ledger if item.get("id")}
+    semantics = (graph or {}).get("semantics", {})
+    af_arguments = semantics.get("arguments", [])
+    attacks = semantics.get("attacks", [])
+    assessments_by_claim = {}
+    for issue in quality_assessments:
+        assessments_by_claim.setdefault(issue.get("target_claim_id"), []).append({
+            "dimension": issue.get("dimension"), "status": issue.get("status"),
+            "explanation": issue.get("explanation"), "missing_information": issue.get("missing_information", [])})
+    output = []
+    for argument in arguments:
+        claim_prop_id = argument.get("claim_proposition_id")
+        claim = by_id.get(claim_prop_id, {})
+        claim_record = claims_by_prop.get(claim_prop_id, {})
+        af_argument = next((item for item in af_arguments if item.get("relation_id") == argument.get("relation_id")), {})
+        af_id = af_argument.get("id")
+        related_attacks = [item for item in attacks if item.get("target_argument_id") == af_id or item.get("source_argument_id") == af_id]
+        components = {}
+        evidence_ids = []
+        for component in ("grounds", "warrant", "backing", "qualifier", "rebuttal"):
+            values = []
+            for item in (argument.get(component) or {}).get("items", []):
+                proposition = by_id.get(item.get("proposition_id"), {})
+                evidence_id = f"e:{item.get('proposition_id')}"
+                if evidence_id in allowed_evidence:
+                    evidence_ids.append(evidence_id)
+                values.append({"proposition_id": item.get("proposition_id"), "text": item.get("text"),
+                    "source_quote": proposition.get("source_quote"), "source_reference": _source_reference(proposition),
+                    "assertion_origin": item.get("assertion_origin"), "review_status": proposition.get("review_status", "pending"),
+                    "evidence_id": evidence_id if evidence_id in allowed_evidence else None})
+            components[component] = values
+        citations = [item for item in citation_checks if item.get("claim_proposition_id") == claim_prop_id]
+        output.append({"argument_id": argument.get("id"), "relation_id": argument.get("relation_id"),
+            "claim": {"proposition_id": claim_prop_id, "text": claim.get("text"),
+                "source_quote": claim.get("source_quote"), "source_reference": _source_reference(claim),
+                "scope": claim_record.get("scope")},
+            "components": components, "evidence_ids": sorted(set(evidence_ids)),
+            "grounded_label": af_argument.get("grounded_label"), "attacks": related_attacks,
+            "citation_verifications": [{"id": item.get("id"), "marker": item.get("marker"),
+                "doi": item.get("doi"), "status": item.get("status"), "source_type": (item.get("source") or {}).get("source_type"),
+                "rationale": item.get("rationale")} for item in citations],
+            "existing_review_flags": assessments_by_claim.get(f"c:{claim_prop_id}", [])})
+    return output
+
+
+def run_mvp3_evaluation(propositions, graph, analysis_payload, document_metadata, provider,
+                        argument_id=None, reference_sources=None):
+    """Run citation verification and a six-dimension, non-aggregated rubric for selected argument(s)."""
+    claims = analysis_payload.get("claim_register", [])
+    if argument_id:
+        selected_arguments = [item for item in analysis_payload.get("arguments", []) if item.get("id") == argument_id]
+        if not selected_arguments:
+            raise ValueError("The selected argument is not part of this analysis.")
+        selected_claim_ids = {item.get("claim_proposition_id") for item in selected_arguments}
+        claims = [item for item in claims if item.get("proposition_id") in selected_claim_ids]
+    else:
+        selected_arguments = analysis_payload.get("arguments", [])
+
+    citation_checks, model_citation_checks = _citation_verification_inputs(
+        claims, propositions, document_metadata or {}, reference_sources)
+    rubric_inputs = _mvp3_argument_inputs(selected_arguments, propositions,
+        analysis_payload.get("evidence_ledger", []), graph or {}, citation_checks,
+        analysis_payload.get("quality_assessments", []), analysis_payload.get("claim_register", []))
+    model = None
+    returned = {"citation_verifications": [], "rubric_assessments": []}
+    if rubric_inputs or model_citation_checks:
+        prompt = f"""Evaluate source-grounded scientific arguments using the citation evidence and anchored rubric supplied below.
+Return English rationales. This is a reviewer aid, not scientific truth. Do not produce an aggregate score.
+
+CITATION VERIFICATION:
+- For each supplied citation_id, compare the exact claim with only the supplied source text.
+- The source may be an abstract only; do not imply that the full cited study was checked.
+- Return SUPPORTS or REFUTES only when the excerpt directly supports or contradicts the claim.
+- Otherwise return NOT_ENOUGH_INFO. Citation presence, title similarity, or a matching topic is not support.
+- Return evidence_excerpt as an exact, verbatim substring of the supplied source text when it supports the decision; otherwise return an empty string.
+- Reuse only supplied citation IDs. Do not invent a DOI, quotation, or source.
+
+RUBRIC:
+- Return one record for each supplied argument and exactly these six dimensions: {', '.join(MVP3_DIMENSIONS)}.
+- Each score is an ordinal anchor from 0 to 4. Do not interpret it as probability or truth.
+- When evidence is insufficient to make a dimension assessment, use score_status="not_assessed", score 0 as an ignored placeholder, confidence 0, and explain the missing basis. The application will display N/A and exclude that value from benchmark metrics.
+- Use only supplied evidence_ids. Explain uncertainty separately. Do not infer a methodological flaw merely because the full source is unavailable.
+- Apply these anchors exactly:
+{json.dumps(MVP3_RUBRIC_ANCHORS, ensure_ascii=False)}
+
+Citation candidates:
+{json.dumps(model_citation_checks, ensure_ascii=False)}
+Arguments:
+{json.dumps(rubric_inputs, ensure_ascii=False)}
+Return one JSON object matching this schema exactly:
+{json.dumps(MVP3_SCHEMA, ensure_ascii=False)}"""
+        returned, model = _provider_json(prompt, MVP3_SCHEMA, provider)
+
+    expected_citation_ids = {item["id"] for item in model_citation_checks}
+    model_citation_sources = {item["id"]: item.get("source_text") or "" for item in model_citation_checks}
+    citation_results = {item["id"]: item for item in citation_checks}
+    allowed_statuses = {"SUPPORTS", "REFUTES", "NOT_ENOUGH_INFO"}
+    for item in returned.get("citation_verifications", []):
+        if item.get("id") not in expected_citation_ids or item.get("status") not in allowed_statuses:
+            continue
+        result = citation_results.get(item["id"])
+        if not result:
+            continue
+        source_text = model_citation_sources.get(item["id"], "")
+        excerpt = str(item.get("evidence_excerpt") or "").strip()
+        span = _quote_span(source_text, excerpt) if excerpt else None
+        verified_excerpt = source_text[span[0]:span[1]] if span else None
+        status = item["status"]
+        rationale = str(item.get("rationale") or "No rationale returned.")[:2000]
+        if status in {"SUPPORTS", "REFUTES"} and not verified_excerpt:
+            status = "NOT_ENOUGH_INFO"
+            rationale = "The returned evidence excerpt could not be verified in the retrieved source text. " + rationale
+        result["status"] = status
+        result["confidence"] = max(0.0, min(1.0, float(item.get("confidence", 0))))
+        result["rationale"] = rationale
+        result["evidence_excerpt"] = verified_excerpt
+
+    allowed_evidence_ids = {item.get("id") for item in analysis_payload.get("evidence_ledger", [])}
+    returned_assessments = {item.get("argument_id"): item for item in returned.get("rubric_assessments", [])
+                            if item.get("argument_id") in {record["argument_id"] for record in rubric_inputs}}
+    normalized_assessments = []
+    for argument in rubric_inputs:
+        response = returned_assessments.get(argument["argument_id"], {})
+        dimension_rows = {item.get("dimension"): item for item in response.get("dimensions", [])
+                          if item.get("dimension") in MVP3_DIMENSIONS}
+        dimensions = []
+        for dimension in MVP3_DIMENSIONS:
+            item = dimension_rows.get(dimension, {})
+            status = item.get("score_status", "not_assessed")
+            score = item.get("score")
+            if status not in {"assessed", "not_assessed"} or not isinstance(score, int) or isinstance(score, bool) or not 0 <= score <= 4:
+                status, score = "not_assessed", None
+            elif status == "not_assessed":
+                score = None
+            confidence = item.get("confidence", 0)
+            if not isinstance(confidence, (int, float)) or isinstance(confidence, bool):
+                confidence = 0
+            evidence_ids = item.get("evidence_ids", []) if isinstance(item.get("evidence_ids"), list) else []
+            evidence_ids = sorted({value for value in evidence_ids if value in allowed_evidence_ids})
+            dimensions.append({"dimension": dimension, "score": score, "score_status": status,
+                "confidence": max(0.0, min(1.0, float(confidence))),
+                "rationale": str(item.get("rationale") or "Insufficient evidence to assess this dimension.")[:2000],
+                "evidence_ids": evidence_ids,
+                "uncertainty": str(item.get("uncertainty") or "Evidence coverage or source access may be incomplete.")[:1000]})
+        normalized_assessments.append({"argument_id": argument["argument_id"], "relation_id": argument.get("relation_id"),
+            "claim_proposition_id": argument["claim"].get("proposition_id"),
+            "dimensions": dimensions, "review_status": "pending"})
+
+    return {"schema_version": 1, "status": "complete", "rubric_version": MVP3_RUBRIC_VERSION,
+        "citation_verifications": citation_checks, "rubric_assessments": normalized_assessments,
+        "rubric_anchors": MVP3_RUBRIC_ANCHORS,
+        "reviewer_scores": [], "benchmark": {"reviewer_count": 0, "ready": False, "dimensions": {}},
+        "provenance": {"provider": provider, "model": model,
+            "prompt_version": PROMPT_VERSIONS["citation_verification"],
+            "rubric_prompt_version": PROMPT_VERSIONS["scientific_quality_rubric"],
+            "citation_retrieval": "local full text when supplied; otherwise Crossref abstract only",
+            "evaluated_at": datetime.now(timezone.utc).isoformat(), "argument_ids": [item["argument_id"] for item in rubric_inputs]},
+        "stale": False,
+        "interpretation": "Scores are an uncalibrated six-dimension reviewer aid. There is no composite score; citation classifications depend on the retrieved source excerpt and require human review."}
+
+
 def build_aif_graph(propositions, relations, analysis_payload=None):
-    """Build an AIF I/RA/CA graph; semantic roles remain proposition metadata."""
+    """Build a source-grounded AIF graph and its explicit Dung AF projection."""
     nodes, edges = [], []
     proposition_by_id = {item["id"]: item for item in propositions}
     for proposition in propositions:
@@ -1104,9 +1506,9 @@ def build_aif_graph(propositions, relations, analysis_payload=None):
             attackers = [pid for pid in relation["premise_ids"] if pid in graph_props]
             if not attackers:
                 continue
-            target_kind, target_id = relation.get("target_kind"), relation.get("target_id")
+            target_id = relation.get("target_id")
             support_relations = [candidate for candidate in relations if candidate.get("relation_type") == "supports"]
-            if relation_type == "undercut" or target_kind == "inference":
+            if relation_type == "undercut":
                 target_relation = next((candidate for candidate in relations if candidate["id"] == target_id and
                     candidate["relation_type"] == "supports"), None)
                 if not target_relation:
@@ -1129,7 +1531,20 @@ def build_aif_graph(propositions, relations, analysis_payload=None):
             cid = f"ca:{relation['id']}"
             nodes.append({"id": cid, "node_type": "CA", "text": relation_type,
                 "relation_id": relation["id"], "metadata": {"attack_type": relation_type,
-                "explanation": relation.get("explanation", ""), "review_status": relation.get("review_status", "pending")}})
+                "explanation": relation.get("explanation", ""),
+                "premise_proposition_ids": attackers,
+                "source_evidence": [{"proposition_id": pid, "text": proposition_by_id[pid].get("text"),
+                    "source_quote": proposition_by_id[pid].get("source_quote"),
+                    "source_reference": _source_reference(proposition_by_id[pid]),
+                    "review_status": proposition_by_id[pid].get("review_status", "pending"),
+                    "provenance": proposition_by_id[pid].get("provenance", {})}
+                    for pid in attackers if pid in proposition_by_id],
+                "target_proposition_id": target_id if target_node and target_node.startswith("i:") else None,
+                "target_aif_node_id": target_node,
+                "supporting_quote": relation.get("supporting_quote"),
+                "provenance": relation.get("provenance", {}),
+                "is_inferred": relation.get("is_inferred", False),
+                "review_status": relation.get("review_status", "pending")}})
             for pid in attackers:
                 edges.append({"id": f"e:{pid}:{relation['id']}", "source_node_id": f"i:{pid}", "target_node_id": cid})
             edges.append({"id": f"e:{relation['id']}:target", "source_node_id": cid, "target_node_id": target_node})
@@ -1147,50 +1562,375 @@ def build_aif_graph(propositions, relations, analysis_payload=None):
                 node["metadata"]["claim_scope"] = claim.get("scope")
                 node["metadata"]["claim_type"] = claim.get("claim_type")
             node["metadata"]["quality_finding_ids"] = findings.get(proposition_id, [])
-    validation = validate_aif_graph({"nodes": nodes, "edges": edges})
+    graph = {"version": 2, "nodes": nodes, "edges": edges}
+    validation = validate_aif_graph(graph)
     for relation in relations:
         if relation.get("relation_type") in {"undermine", "undercut", "rebut"} and not any(
                 edge.get("id") == f"e:{relation['id']}:target" for edge in edges):
             validation["warnings"].append(f"Attack relation {relation['id']} has no semantically valid target and was not mapped to CA.")
-    return {"version": 1, "nodes": nodes, "edges": edges}, validation
+    graph["validation"] = validation
+    graph["semantics"] = evaluate_aif_semantics(graph, relations=relations, propositions=propositions)
+    validation["warnings"].extend(graph["semantics"]["warnings"])
+    return graph, validation
 
 
 def validate_aif_graph(graph):
-    nodes = {node["id"]: node for node in graph.get("nodes", [])}
-    errors, warnings = [], []
-    for edge in graph.get("edges", []):
-        if edge.get("source_node_id") not in nodes or edge.get("target_node_id") not in nodes:
-            errors.append(f"Dangling edge: {edge.get('id')}")
-    for node in graph.get("nodes", []):
+    raw_nodes = graph.get("nodes") if isinstance(graph, dict) else []
+    raw_edges = graph.get("edges") if isinstance(graph, dict) else []
+    raw_nodes = raw_nodes if isinstance(raw_nodes, list) else []
+    raw_edges = raw_edges if isinstance(raw_edges, list) else []
+    errors, warnings, traceability_issues = [], [], []
+    nodes, node_ids, edge_ids = {}, set(), set()
+    incoming, outgoing = {}, {}
+
+    for index, node in enumerate(raw_nodes):
+        if not isinstance(node, dict):
+            errors.append(f"Node at index {index} is not an object.")
+            continue
+        node_id = node.get("id")
+        if not isinstance(node_id, str) or not node_id.strip():
+            errors.append(f"Node at index {index} has no valid ID.")
+            continue
+        if node_id in node_ids:
+            errors.append(f"Duplicate node ID: {node_id}")
+            continue
+        node_ids.add(node_id)
+        nodes[node_id] = node
+        incoming[node_id] = []
+        outgoing[node_id] = []
+        if node.get("node_type") not in {"I", "RA", "CA", "PA"}:
+            errors.append(f"Node {node_id} has unsupported AIF type {node.get('node_type')!r}.")
+
+    for index, edge in enumerate(raw_edges):
+        if not isinstance(edge, dict):
+            errors.append(f"Edge at index {index} is not an object.")
+            continue
+        edge_id = edge.get("id")
+        if not isinstance(edge_id, str) or not edge_id.strip():
+            errors.append(f"Edge at index {index} has no valid ID.")
+        elif edge_id in edge_ids:
+            errors.append(f"Duplicate edge ID: {edge_id}")
+        else:
+            edge_ids.add(edge_id)
+        source, target = edge.get("source_node_id"), edge.get("target_node_id")
+        if not isinstance(source, str) or not isinstance(target, str) or source not in nodes or target not in nodes:
+            errors.append(f"Dangling edge: {edge_id or index}")
+            continue
+        source_type, target_type = nodes[source].get("node_type"), nodes[target].get("node_type")
+        allowed_targets = {"I": {"RA", "CA", "PA"}, "RA": {"I", "CA", "PA"},
+                           "CA": {"I", "RA"}, "PA": {"I", "RA"}}
+        if target_type not in allowed_targets.get(source_type, set()):
+            errors.append(f"Invalid AIF edge type: {source_type} node {source} cannot connect to {target_type} node {target}.")
+        outgoing[source].append(edge)
+        incoming[target].append(edge)
+
+    for node_id, node in nodes.items():
         node_type = node.get("node_type")
-        inbound = [edge for edge in graph.get("edges", []) if edge.get("target_node_id") == node["id"]]
-        outbound = [edge for edge in graph.get("edges", []) if edge.get("source_node_id") == node["id"]]
+        inbound, outbound = incoming[node_id], outgoing[node_id]
         if not inbound and not outbound:
-            warnings.append(f"Orphaned {node_type}-node {node['id']} is not connected to an argument.")
+            warnings.append(f"Orphaned {node_type}-node {node_id} is not connected to an argument.")
         if node_type == "RA":
             if len(inbound) < 1 or len(outbound) != 1:
-                errors.append(f"RA node {node['id']} must have premises and one conclusion")
-            if not node.get("metadata", {}).get("scheme_id"):
-                warnings.append(f"RA node {node['id']} has no identified inference scheme.")
-            if node.get("metadata", {}).get("is_inferred") and node.get("metadata", {}).get("review_status") != "approved":
-                warnings.append(f"Inferred RA node {node['id']} still requires human review.")
+                errors.append(f"RA node {node_id} must have at least one premise and exactly one conclusion.")
+            metadata = node.get("metadata", {})
+            metadata = metadata if isinstance(metadata, dict) else {}
+            if not metadata.get("scheme_id"):
+                warnings.append(f"RA node {node_id} has no identified inference scheme.")
+            if metadata.get("is_inferred") and metadata.get("review_status") != "approved":
+                warnings.append(f"Inferred RA node {node_id} still requires human review.")
         elif node_type == "CA":
-            if not inbound or len(outbound) != 1:
-                errors.append(f"CA node {node['id']} must connect an attacker to one target")
+            if len(inbound) < 1 or len(outbound) != 1:
+                errors.append(f"CA node {node_id} must have at least one source and exactly one target.")
+        elif node_type == "PA":
+            if len(inbound) < 1 or len(outbound) != 1:
+                errors.append(f"PA node {node_id} must have at least one input and exactly one output.")
         elif node_type == "I":
             metadata = node.get("metadata", {})
+            metadata = metadata if isinstance(metadata, dict) else {}
             if metadata.get("is_inferred") and not inbound and not outbound:
-                warnings.append(f"Inferred I-node {node['id']} is not connected to an argument.")
+                warnings.append(f"Inferred I-node {node_id} is not connected to an argument.")
             if "claim" in metadata.get("roles", []) and not inbound:
-                warnings.append(f"Claim I-node {node['id']} has no incoming supporting argument.")
+                warnings.append(f"Claim I-node {node_id} has no incoming supporting argument.")
             if metadata.get("assertion_origin") in {"inferred", "hypothetical"} and metadata.get("review_status") != "approved":
-                warnings.append(f"{metadata.get('assertion_origin').capitalize()} I-node {node['id']} still requires human review.")
-            if metadata.get("source_reference") and not metadata["source_reference"].get("location_complete"):
-                warnings.append(f"I-node {node['id']} has incomplete source anchors.")
-    if not graph.get("nodes"):
+                warnings.append(f"{metadata.get('assertion_origin').capitalize()} I-node {node_id} still requires human review.")
+            source_reference = metadata.get("source_reference")
+            roles = metadata.get("roles", [])
+            requires_trace = any(role in roles for role in ("claim", "evidence")) if isinstance(roles, list) else False
+            if requires_trace and not source_reference:
+                issue = f"I-node {node_id} has no traceable source reference."
+                warnings.append(issue)
+                traceability_issues.append(issue)
+            elif source_reference and (not isinstance(source_reference, dict) or not source_reference.get("location_complete")):
+                issue = f"I-node {node_id} has incomplete source anchors."
+                warnings.append(issue)
+                traceability_issues.append(issue)
+    if not raw_nodes:
         warnings.append("No truth-evaluable propositions are available for an AIF graph.")
     return {"valid": not errors, "errors": errors, "warnings": warnings,
-            "machine_validation_only": True}
+            "traceability_valid": not traceability_issues, "traceability_issues": traceability_issues,
+            "machine_validation_only": True, "cycles_allowed": True}
+
+
+def evaluate_aif_semantics(graph, relations=None, propositions=None):
+    """Project AIF inference/challenge applications to an argumentation framework.
+
+    A multi-source CA is kept as one challenger argument. Grounded labels describe
+    acceptability in this extracted network; they are not scientific truth labels.
+    """
+    relations = relations or []
+    nodes = graph.get("nodes", []) if isinstance(graph, dict) else []
+    edges = graph.get("edges", []) if isinstance(graph, dict) else []
+    by_id = {node.get("id"): node for node in nodes if isinstance(node, dict) and node.get("id")}
+    incoming, outgoing = {}, {}
+    for node_id in by_id:
+        incoming[node_id], outgoing[node_id] = [], []
+    for edge in edges:
+        if not isinstance(edge, dict):
+            continue
+        source, target = edge.get("source_node_id"), edge.get("target_node_id")
+        if source in by_id and target in by_id:
+            outgoing[source].append(target)
+            incoming[target].append(source)
+
+    relation_by_id = {item.get("id"): item for item in relations if isinstance(item, dict) and item.get("id")}
+    proposition_by_id = {item.get("id"): item for item in (propositions or [])
+                         if isinstance(item, dict) and item.get("id")}
+
+    def source_evidence(premise_ids, metadata=None):
+        stored = (metadata or {}).get("source_evidence")
+        if isinstance(stored, list) and stored:
+            return stored
+        return [{"proposition_id": pid, "text": proposition_by_id[pid].get("text"),
+                 "source_quote": proposition_by_id[pid].get("source_quote"),
+                 "source_reference": _source_reference(proposition_by_id[pid]),
+                 "review_status": proposition_by_id[pid].get("review_status", "pending"),
+                 "provenance": proposition_by_id[pid].get("provenance", {})}
+                for pid in premise_ids if pid in proposition_by_id]
+    arguments, argument_by_ra, argument_by_ca = [], {}, {}
+
+    def proposition_id(node_id):
+        node = by_id.get(node_id, {})
+        return node.get("proposition_id")
+
+    def make_argument(argument_id, node, kind, premises, conclusion, relation=None, support_status="mapped"):
+        metadata = node.get("metadata", {}) if node else {}
+        relation = relation or {}
+        return {"id": argument_id, "aif_node_id": node.get("id") if node else None,
+            "kind": kind, "relation_id": relation.get("id") or (node or {}).get("relation_id"),
+            "premise_proposition_ids": list(dict.fromkeys(premises)),
+            "conclusion_proposition_id": conclusion,
+            "explanation": relation.get("explanation") or metadata.get("explanation") or "",
+            "supporting_quote": relation.get("supporting_quote") or metadata.get("supporting_quote"),
+            "source_evidence": source_evidence(premises, metadata),
+            "provenance": relation.get("provenance") or metadata.get("provenance") or {},
+            "review_status": relation.get("review_status") or metadata.get("review_status") or "pending",
+            "is_inferred": bool(relation.get("is_inferred", metadata.get("is_inferred", False))),
+            "support_status": support_status}
+
+    for node in nodes:
+        if not isinstance(node, dict) or node.get("node_type") not in {"RA", "CA"}:
+            continue
+        node_id, metadata = node.get("id"), node.get("metadata", {})
+        relation = relation_by_id.get(node.get("relation_id"), {})
+        premises = metadata.get("premise_proposition_ids")
+        if not isinstance(premises, list):
+            premises = [proposition_id(source_id) for source_id in incoming.get(node_id, [])
+                        if by_id.get(source_id, {}).get("node_type") == "I"]
+        if node.get("node_type") == "RA":
+            conclusion = metadata.get("conclusion_proposition_id")
+            if not conclusion:
+                conclusion = next((proposition_id(target_id) for target_id in outgoing.get(node_id, [])
+                                   if by_id.get(target_id, {}).get("node_type") == "I"), None)
+            argument = make_argument(f"arg:ra:{node.get('relation_id') or node_id}", node, "inference",
+                                     [pid for pid in premises if pid], conclusion, relation)
+            arguments.append(argument)
+            argument_by_ra[node_id] = argument["id"]
+        else:
+            argument = make_argument(f"arg:ca:{node.get('relation_id') or node_id}", node, "challenge",
+                                     [pid for pid in premises if pid], None, relation)
+            arguments.append(argument)
+            argument_by_ca[node_id] = argument["id"]
+
+    argument_by_id = {argument["id"]: argument for argument in arguments}
+    atom_argument_by_proposition = {}
+    attacks, attack_pairs, attack_explanations, warnings = [], set(), [], []
+    warnings.extend(f"PA node {node['id']} is retained in AIF but excluded from the Dung AF projection; grounded labels do not account for preferences."
+                    for node in nodes if isinstance(node, dict) and node.get("node_type") == "PA" and node.get("id"))
+    mapped_relation_ids = set()
+
+    def add_attack(source_argument_id, target_argument_id, relation, ca_node, mapping_rule,
+                   source_proposition_ids, target_proposition_id):
+        pair = (source_argument_id, target_argument_id)
+        if pair in attack_pairs:
+            return
+        attack_pairs.add(pair)
+        source = argument_by_id.get(source_argument_id, {})
+        target = argument_by_id.get(target_argument_id, {})
+        details = {"id": f"attack:{relation.get('id') or (ca_node or {}).get('id')}:{len(attacks) + 1}",
+            "source_argument_id": source_argument_id, "target_argument_id": target_argument_id,
+            "source_aif_node_id": (ca_node or {}).get("id"), "target_aif_node_id": target.get("aif_node_id"),
+            "relation_id": relation.get("id") or (ca_node or {}).get("relation_id"),
+            "attack_type": relation.get("relation_type") or (ca_node or {}).get("metadata", {}).get("attack_type") or "attack",
+            "source_proposition_ids": list(dict.fromkeys(pid for pid in source_proposition_ids if pid)),
+            "source_evidence": source_evidence(source_proposition_ids, (ca_node or {}).get("metadata", {})),
+            "target_proposition_id": target_proposition_id,
+            "target_argument_summary": {"id": target.get("id"), "relation_id": target.get("relation_id"),
+                "premise_proposition_ids": target.get("premise_proposition_ids", []),
+                "conclusion_proposition_id": target.get("conclusion_proposition_id"),
+                "explanation": target.get("explanation", ""), "review_status": target.get("review_status", "pending")},
+            "explanation": relation.get("explanation") or (ca_node or {}).get("metadata", {}).get("explanation") or "",
+            "supporting_quote": relation.get("supporting_quote") or (ca_node or {}).get("metadata", {}).get("supporting_quote"),
+            "provenance": relation.get("provenance") or (ca_node or {}).get("metadata", {}).get("provenance") or {},
+            "review_status": relation.get("review_status") or (ca_node or {}).get("metadata", {}).get("review_status") or "pending",
+            "is_inferred": bool(relation.get("is_inferred", (ca_node or {}).get("metadata", {}).get("is_inferred", False))),
+            "mapping_rule": mapping_rule}
+        attacks.append(details)
+        attack_explanations.append({**details, "mapped": True})
+
+    for ca_node_id, source_argument_id in argument_by_ca.items():
+        ca_node = by_id[ca_node_id]
+        relation_id = ca_node.get("relation_id")
+        relation = relation_by_id.get(relation_id, {})
+        metadata = ca_node.get("metadata", {})
+        attack_type = relation.get("relation_type") or metadata.get("attack_type") or "attack"
+        target_node_ids = outgoing.get(ca_node_id, [])
+        source_propositions = metadata.get("premise_proposition_ids") or [
+            proposition_id(source_id) for source_id in incoming.get(ca_node_id, [])]
+        target_prop_id = metadata.get("target_proposition_id")
+        target_arguments, mapping_rule = [], ""
+        if len(target_node_ids) == 1:
+            target_node = by_id.get(target_node_ids[0], {})
+            target_type = target_node.get("node_type")
+            if target_type == "RA":
+                target_argument_id = argument_by_ra.get(target_node.get("id"))
+                if target_argument_id:
+                    target_arguments = [target_argument_id]
+                    mapping_rule = "AIF CA targets an RA node; the challenge attacks that inference argument (undercut)."
+            elif target_type == "I":
+                target_prop_id = target_prop_id or target_node.get("proposition_id")
+                if attack_type == "undermine":
+                    target_arguments = [argument["id"] for argument in arguments
+                        if target_prop_id and target_prop_id in argument.get("premise_proposition_ids", [])]
+                    mapping_rule = "AIF CA targets an I-node used as a premise; attack every projected argument that uses that premise."
+                elif attack_type == "rebut":
+                    target_arguments = [argument["id"] for argument in arguments
+                        if argument.get("kind") == "inference" and
+                        argument.get("conclusion_proposition_id") == target_prop_id]
+                    if target_arguments:
+                        mapping_rule = "AIF CA targets an I-node that is an inference conclusion; attack each inference argument for that conclusion."
+                    elif target_prop_id:
+                        atomic_id = f"arg:i:{target_prop_id}"
+                        if atomic_id not in atom_argument_by_proposition:
+                            atom = make_argument(atomic_id, target_node, "atomic_proposition", [], target_prop_id,
+                                                 relation, support_status="unbacked_atomic_projection")
+                            arguments.append(atom)
+                            argument_by_id[atomic_id] = atom
+                            atom_argument_by_proposition[target_prop_id] = atomic_id
+                        target_arguments = [atom_argument_by_proposition[target_prop_id]]
+                        mapping_rule = "No inference concludes the rebutted I-node; represent the proposition as an explicit unbacked atomic argument."
+        if target_arguments:
+            mapped_relation_ids.add(relation_id)
+            for target_argument_id in target_arguments:
+                add_attack(source_argument_id, target_argument_id, relation, ca_node, mapping_rule,
+                           source_propositions, target_prop_id)
+        else:
+            reason = ("The CA has no single valid target." if len(target_node_ids) != 1 else
+                      "The CA target could not be projected to an argument under the declared attack type.")
+            explanation = {"id": f"attack:{relation_id or ca_node_id}:unmapped", "relation_id": relation_id,
+                "source_argument_id": source_argument_id, "target_argument_id": None,
+                "source_aif_node_id": ca_node_id, "target_aif_node_id": target_node_ids[0] if target_node_ids else None,
+                "attack_type": attack_type, "source_proposition_ids": list(dict.fromkeys(pid for pid in source_propositions if pid)),
+                "source_evidence": source_evidence(source_propositions, metadata),
+                "target_proposition_id": target_prop_id, "explanation": relation.get("explanation") or metadata.get("explanation") or "",
+                "supporting_quote": relation.get("supporting_quote") or metadata.get("supporting_quote"),
+                "provenance": relation.get("provenance") or metadata.get("provenance") or {},
+                "review_status": relation.get("review_status") or metadata.get("review_status") or "pending",
+                "is_inferred": bool(relation.get("is_inferred", metadata.get("is_inferred", False))),
+                "mapping_rule": "No attack edge added because the target mapping is incomplete.",
+                "mapped": False, "mapping_issue": reason}
+            attack_explanations.append(explanation)
+            warnings.append(f"Attack relation {relation_id or ca_node_id} is not represented in the AF: {reason}")
+
+    for relation in relations:
+        if not isinstance(relation, dict) or relation.get("relation_type") not in {"undermine", "undercut", "rebut"}:
+            continue
+        relation_id = relation.get("id")
+        if relation_id in mapped_relation_ids:
+            continue
+        if any(node.get("relation_id") == relation_id and node.get("node_type") == "CA" for node in nodes):
+            continue
+        explanation = {"id": f"attack:{relation_id}:unmapped", "relation_id": relation_id,
+            "source_argument_id": None, "target_argument_id": None, "source_aif_node_id": None,
+            "target_aif_node_id": None, "attack_type": relation.get("relation_type"),
+            "source_proposition_ids": list(relation.get("premise_ids") or []),
+            "source_evidence": source_evidence(relation.get("premise_ids") or []),
+            "target_proposition_id": relation.get("target_id"),
+            "explanation": relation.get("explanation") or "",
+            "supporting_quote": relation.get("supporting_quote"), "provenance": relation.get("provenance") or {},
+            "review_status": relation.get("review_status") or "pending",
+            "is_inferred": bool(relation.get("is_inferred", False)),
+            "mapping_rule": "No AIF CA was built for this relation, so it cannot attack an AF argument.",
+            "mapped": False, "mapping_issue": "The source or target did not pass AIF mapping checks."}
+        attack_explanations.append(explanation)
+        warnings.append(f"Attack relation {relation_id} has no AIF CA node and was omitted from the AF.")
+
+    attacker_map = {argument["id"]: set() for argument in arguments}
+    attacked_by = {argument["id"]: set() for argument in arguments}
+    for attack in attacks:
+        attacker_map[attack["target_argument_id"]].add(attack["source_argument_id"])
+        attacked_by[attack["source_argument_id"]].add(attack["target_argument_id"])
+    grounded_in = set()
+    while True:
+        next_in = {argument_id for argument_id, attackers in attacker_map.items()
+                   if all(any(defender in attacked_by.get(attacker, set()) for defender in grounded_in)
+                          for attacker in attackers)}
+        if next_in == grounded_in:
+            break
+        grounded_in = next_in
+    grounded_out = {target for source in grounded_in for target in attacked_by.get(source, set())}
+    grounded_undecided = set(attacker_map) - grounded_in - grounded_out
+    label_by_argument = {argument_id: "IN" for argument_id in grounded_in}
+    label_by_argument.update({argument_id: "OUT" for argument_id in grounded_out})
+    label_by_argument.update({argument_id: "UNDECIDED" for argument_id in grounded_undecided})
+    for argument in arguments:
+        argument["grounded_label"] = label_by_argument.get(argument["id"], "UNDECIDED")
+        argument["attackers"] = sorted(attacker_map.get(argument["id"], set()))
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        metadata = node.setdefault("metadata", {})
+        if node.get("node_type") == "RA":
+            argument_id = argument_by_ra.get(node.get("id"))
+            if argument_id:
+                metadata["grounded_label"] = label_by_argument.get(argument_id)
+                metadata["grounded_argument_id"] = argument_id
+        elif node.get("node_type") == "CA":
+            argument_id = argument_by_ca.get(node.get("id"))
+            if argument_id:
+                metadata["grounded_label"] = label_by_argument.get(argument_id)
+                metadata["grounded_argument_id"] = argument_id
+        elif node.get("node_type") == "I":
+            proposition = node.get("proposition_id")
+            labels = [{"argument_id": argument["id"], "label": label_by_argument[argument["id"]],
+                       "support_status": argument["support_status"]}
+                      for argument in arguments if argument.get("conclusion_proposition_id") == proposition]
+            if labels:
+                metadata["grounded_argument_labels"] = labels
+
+    return {"semantics": "Dung grounded extension", "version": 1,
+        "projection": {"method": "explicit AIF-to-AF projection", "argument_count": len(arguments),
+            "attack_count": len(attacks),
+            "rules": {"supports": "Each RA node maps to one inference argument with its complete premise set and conclusion.",
+                "multi_premise_ca": "Each CA node maps to one composite challenge argument; its source propositions stay grouped.",
+                "undercut": "A CA targeting an RA attacks that inference argument.",
+                "undermine": "A CA targeting an I premise attacks every projected argument that uses the premise.",
+                "rebut": "A CA targeting an I conclusion attacks every inference argument for that conclusion; if none exists, the I-node is represented as an unbacked atomic argument.",
+                "preference": "PA nodes remain in AIF and are not represented in this Dung AF; grounded labels do not account for preferences."}},
+        "arguments": arguments, "attacks": attacks, "attack_explanations": attack_explanations,
+        "grounded_extension": {"in": sorted(grounded_in), "out": sorted(grounded_out),
+            "undecided": sorted(grounded_undecided)},
+        "warnings": warnings,
+        "interpretation": "IN/OUT/UNDECIDED describe acceptability in this machine-extracted argument network only. IN does not mean scientifically true; review evidence and provenance separately."}
 
 
 def _cross_paper_pair_score(left, right):
