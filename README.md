@@ -121,13 +121,15 @@ docker compose down
 <a id="native"></a>
 ## 💻 Cài và chạy trực tiếp
 
-Cần **Python 3.10 trở lên**. Cài dependencies và Chromium của Playwright, sau đó khởi động app.
+Cần **Python 3.10 trở lên**, **Node.js 22.12 trở lên** và npm. Bundle giao diện Toulmin được biên dịch bằng Vite trước khi chạy ứng dụng.
 
 **Windows · PowerShell**
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
+npm ci
+npm run build
 python -m pip install -r requirements.txt
 python -m playwright install chromium
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
@@ -139,6 +141,8 @@ python app.py
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
+npm ci
+npm run build
 python -m pip install -r requirements.txt
 python -m playwright install chromium
 [ -f .env ] || cp .env.example .env
@@ -150,13 +154,15 @@ python app.py
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
+npm ci
+npm run build
 python -m pip install -r requirements.txt
 python -m playwright install --with-deps chromium
 [ -f .env ] || cp .env.example .env
 python app.py
 ```
 
-Mở **[http://127.0.0.1:8543](http://127.0.0.1:8543)**. GROBID và Ollama là các dịch vụ riêng; cập nhật `GROBID_URL` hoặc `OLLAMA_URL` trong `.env` nếu chúng chạy ở địa chỉ khác. Trên Windows, `run_app.bat` cũng cài dependencies và Chromium trước khi chạy.
+Mở **[http://127.0.0.1:8543](http://127.0.0.1:8543)**. GROBID và Ollama là các dịch vụ riêng; cập nhật `GROBID_URL` hoặc `OLLAMA_URL` trong `.env` nếu chúng chạy ở địa chỉ khác. Trên Windows, `run_app.bat` cũng cài frontend dependencies, build asset, cài Python dependencies và Chromium trước khi chạy.
 
 <a id="ai-provider"></a>
 ## 🤖 Chọn AI provider

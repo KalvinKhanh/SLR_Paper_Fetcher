@@ -1,5 +1,8 @@
 .git
 .fk-skills
+node_modules
+static/build
+.fk-skills
 .pytest_cache
 __pycache__
 *.py[cod]

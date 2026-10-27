@@ -17,6 +17,8 @@ downloads/*
 
 # Virtual environments
 .venv/
+node_modules/
+static/build/
 venv/
 env/
 
