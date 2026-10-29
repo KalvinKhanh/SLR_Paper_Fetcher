@@ -39,7 +39,7 @@ SLR Paper Fetcher nhận DOI, tải các bản PDF có thể truy cập, quản 
 | 📚 | **Thư viện PDF** | Theo dõi trạng thái tải, quản lý tệp và xuất trích dẫn RIS. |
 | ☁️ | **Đồng bộ SLR System** | Chọn dự án đích và gửi bài báo đã lưu qua API. |
 | 🧠 | **Phân tích toàn văn** | Trích xuất nội dung bằng GROBID; phân tích bằng Ollama cục bộ hoặc Gemini API. |
-| 🕸️ | **Rà soát lập luận** | Xem nguồn trích dẫn, Toulmin Model và AIF Graph; rà soát các đề xuất AI. |
+| 🕸️ | **Rà soát lập luận** | Xem trích dẫn nguồn, mô hình 5 phần The Craft of Research, Toulmin Model và AIF Graph; rà soát các đề xuất AI. |
 | 💾 | **Tiếp tục công việc** | Lưu bản phân tích, lịch sử và trạng thái hàng đợi trong SQLite. |
 
 <a id="architecture"></a>

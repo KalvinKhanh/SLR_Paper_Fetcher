@@ -348,8 +348,13 @@ class PaperStore:
             elif int(run["analysis_payload"].get("argument_card_schema_version") or 0) < ARGUMENT_CARD_SCHEMA_VERSION:
                 refreshed = build_unified_analysis(doi, propositions, relations)
                 run["analysis_payload"]["arguments"] = refreshed["arguments"]
+                run["analysis_payload"]["craft_arguments"] = refreshed["craft_arguments"]
                 run["analysis_payload"]["argument_card_schema_version"] = ARGUMENT_CARD_SCHEMA_VERSION
                 run["analysis_payload"].setdefault("provenance", {})["argument_cards_rederived_at_read"] = True
+            elif run["analysis_payload"].get("derived_data_stale"):
+                refreshed = build_unified_analysis(doi, propositions, relations)
+                run["analysis_payload"]["craft_arguments"] = refreshed["craft_arguments"]
+                run["analysis_payload"].setdefault("provenance", {})["craft_arguments_rederived_at_read"] = True
         except (ImportError, KeyError, TypeError):
             build_aif_graph = None
         proposition_by_id = {item["id"]: item for item in propositions}
@@ -384,6 +389,10 @@ class PaperStore:
                 cursor = db.execute(f"UPDATE {table} SET review_status=? WHERE id=? AND run_id=?", (decision, item_id, run["id"]))
                 if cursor.rowcount != 1:
                     return False
+                payload = json.loads(run["analysis_payload"] or "{}")
+                payload["derived_data_stale"] = True
+                db.execute("UPDATE analysis_runs SET analysis_payload=? WHERE id=?",
+                           (json.dumps(payload, ensure_ascii=False), run["id"]))
             else:
                 payload = json.loads(run["analysis_payload"] or "{}")
                 key = "quality_assessments" if item_type == "quality_assessment" else "reviewer_questions"
@@ -405,7 +414,8 @@ class PaperStore:
     def edit_analysis_item(self, doi, item_id, item_type, changes, note=""):
         allowed_types = {"research_gap", "research_question", "objective", "hypothesis", "finding", "conclusion",
                          "background", "assumption", "implication", "limitation", "future_work", "other"}
-        allowed_roles = {"claim", "evidence", "warrant", "backing", "qualifier", "rebuttal"}
+        allowed_roles = {"claim", "reason", "evidence", "warrant", "backing", "qualifier",
+                         "acknowledgment", "response", "rebuttal"}
         if not isinstance(changes, dict) or item_type not in {"proposition", "relation", "claim"}:
             raise ValueError("Invalid edit payload.")
         now = datetime.now(timezone.utc).isoformat()
