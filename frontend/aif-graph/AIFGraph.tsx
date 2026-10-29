@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Background, BackgroundVariant, Controls, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react';
-import type { AifFlowEdge, AifFlowNode, AifGraphPayload } from './types/aif.types';
+import type { AifFlowEdge, AifFlowNode, AifGraphControls, AifGraphPayload } from './types/aif.types';
 import { useAifGraph } from './hooks/useAifGraph';
 import { useAifLayout } from './hooks/useAifLayout';
 import { graphKey } from './adapters/aifGraphAdapter';
@@ -46,9 +46,11 @@ function GraphCanvas({ payload }: { payload: AifGraphPayload }) {
   const relayout = useCallback(() => { graph.autoLayout(); }, [graph.autoLayout]);
 
   useEffect(() => {
-    window.aifGraphControls = { fitView: fit, zoomIn: () => { void zoomIn({ duration: 120 }); }, zoomOut: () => { void zoomOut({ duration: 120 }); }, autoLayout: relayout, resetLayout: relayout };
-    return () => { delete window.aifGraphControls; };
-  }, [fit, relayout, zoomIn, zoomOut]);
+    const controls: AifGraphControls = { fitView: fit, zoomIn: () => { void zoomIn({ duration: 120 }); }, zoomOut: () => { void zoomOut({ duration: 120 }); }, autoLayout: relayout, resetLayout: relayout };
+    const key = payload.view === 'craft' ? 'craftGraphControls' : 'aifGraphControls';
+    window[key] = controls;
+    return () => { delete window[key]; };
+  }, [fit, payload.view, relayout, zoomIn, zoomOut]);
 
   useEffect(() => {
     const onLayoutError = (event: Event) => setLayoutError(String((event as CustomEvent<string>).detail || 'AIF layout failed.'));
@@ -58,8 +60,9 @@ function GraphCanvas({ payload }: { payload: AifGraphPayload }) {
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: AifFlowNode) => {
     setFocusedNodeId(node.id);
-    window.onAifNodeSelected?.(node.data.originalNode);
-  }, []);
+    if (payload.view === 'craft') window.onCraftNodeSelected?.(node.data.originalNode);
+    else window.onAifNodeSelected?.(node.data.originalNode);
+  }, [payload.view]);
   const onNodeDoubleClick = useCallback((_event: React.MouseEvent, node: AifFlowNode) => {
     void fitView({ nodes: [{ id: node.id }], padding: 0.55, duration: 180 });
     setFocusedNodeId(node.id);
@@ -67,14 +70,15 @@ function GraphCanvas({ payload }: { payload: AifGraphPayload }) {
   const onNodeMouseEnter = useCallback((_event: React.MouseEvent, node: AifFlowNode) => setHoveredNodeId(node.id), []);
   const onNodeMouseLeave = useCallback(() => setHoveredNodeId(null), []);
   const onMove = useCallback((_event: MouseEvent | TouchEvent | null, viewport: { x: number; y: number; zoom: number }) => {
-    window.dispatchEvent(new CustomEvent('aif-viewport-move', { detail: { zoom: viewport.zoom, interactive: !isLayingOut } }));
-  }, [isLayingOut]);
+    const eventName = payload.view === 'craft' ? 'craft-viewport-move' : 'aif-viewport-move';
+    window.dispatchEvent(new CustomEvent(eventName, { detail: { zoom: viewport.zoom, interactive: !isLayingOut } }));
+  }, [isLayingOut, payload.view]);
   const onEdgeClick = useCallback((_event: React.MouseEvent, edge: AifFlowEdge) => {
     window.onAifEdgeSelected?.(edge.data.originalEdge);
   }, []);
   const onPaneClick = useCallback(() => { setFocusedNodeId(null); setHoveredNodeId(null); }, []);
 
-  return <div className="aif-flow-shell" aria-label="AIF argument graph">
+  return <div className="aif-flow-shell" aria-label={payload.view === 'craft' ? 'Craft of Research argument graph' : 'AIF argument graph'}>
     <ReactFlow<AifFlowNode, AifFlowEdge>
       nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
       onNodesChange={graph.onNodesChange} onEdgesChange={graph.onEdgesChange}
@@ -97,7 +101,7 @@ function GraphCanvas({ payload }: { payload: AifGraphPayload }) {
 const GraphCanvasMemo = memo(GraphCanvas);
 
 export function AIFGraph({ payload }: { payload: AifGraphPayload }) {
-  return <ReactFlowProvider><GraphCanvasMemo key={graphKey(payload)} payload={payload} /></ReactFlowProvider>;
+  return <ReactFlowProvider><GraphCanvasMemo key={`${payload.view || 'aif'}:${graphKey(payload)}`} payload={payload} /></ReactFlowProvider>;
 }
 
 export default memo(AIFGraph);

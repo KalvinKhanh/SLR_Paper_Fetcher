@@ -7,7 +7,7 @@ function InferenceNode({ id, data, selected }: NodeProps<AifFlowNode>) {
   const node = { id, data } as AifFlowNode;
   const metadata = data.originalNode.metadata || {};
   const groundedLabel = String(metadata.grounded_label || '');
-  const scheme = String(metadata.scheme_id || data.text || 'Inference');
+  const scheme = String(metadata.craft_label || metadata.scheme_id || data.text || 'Inference');
   const explanation = String(metadata.explanation || metadata.scheme_description || metadata.reconstructed_reasoning || '');
   const relationshipSummary = `${data.premiseCount || 0} premise${data.premiseCount === 1 ? '' : 's'} → ${data.conclusionCount || 0} conclusion${data.conclusionCount === 1 ? '' : 's'}`;
   const description = [explanation, relationshipSummary].filter(Boolean).join(' · ') || (scheme !== 'Inference' ? scheme : 'Inference details are available in the node panel.');

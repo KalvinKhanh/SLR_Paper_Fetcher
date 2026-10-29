@@ -62,6 +62,7 @@ export type AifFlowEdge = Edge<AifEdgeData, 'aif'> & { data: AifEdgeData };
 export interface AifGraphPayload {
   key: string;
   graph: AifRawGraph;
+  view?: 'aif' | 'craft';
   focusedNodeId?: string | null;
 }
 
@@ -76,9 +77,13 @@ export interface AifGraphControls {
 declare global {
   interface Window {
     renderAifReactFlow?: (payload: AifGraphPayload) => void;
+    renderCraftReactFlow?: (payload: AifGraphPayload) => void;
     pendingAifReactFlow?: AifGraphPayload;
+    pendingCraftReactFlow?: AifGraphPayload;
     onAifNodeSelected?: (node: AifRawNode) => void;
+    onCraftNodeSelected?: (node: AifRawNode) => void;
     onAifEdgeSelected?: (edge: AifRawEdge) => void;
     aifGraphControls?: AifGraphControls;
+    craftGraphControls?: AifGraphControls;
   }
 }

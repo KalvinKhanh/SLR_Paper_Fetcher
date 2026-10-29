@@ -1,4 +1,4 @@
-#aifReactFlowRoot{position:absolute;inset:0;min-width:0;min-height:0;background:#f8fafc}
+#aifReactFlowRoot,#craftReactFlowRoot{position:absolute;inset:0;min-width:0;min-height:0;background:#f8fafc}
 .aif-flow-shell,.aif-flow{width:100%;height:100%;min-width:0;min-height:0}
 .aif-flow{background:#f8fafc;color:#1e293b;font-family:Inter,system-ui,sans-serif}
 .aif-flow .react-flow__pane{cursor:grab}.aif-flow .react-flow__pane:active{cursor:grabbing}
@@ -16,6 +16,14 @@
 .aif-flow-node--information.is-premise-conclusion{border-color:#a8d2d0;background:linear-gradient(125deg,#f0f7ff 0%,#f0fbf5 100%)}
 .aif-flow-node--information.is-premise-conclusion .aif-flow-node__header{color:#25717a}
 .aif-flow-node--information.is-information{border-color:#d5dce5;background:#fff}
+.aif-flow-node--information.is-craft-claim{border-color:#4d7c0f;background:#f7fee7}.aif-flow-node--information.is-craft-claim .aif-flow-node__header{color:#3f6212}
+.aif-flow-node--information.is-craft-reason{border-color:#4f7da9;background:#eff6ff}.aif-flow-node--information.is-craft-reason .aif-flow-node__header{color:#285b93}
+.aif-flow-node--information.is-craft-evidence{border-color:#429c7c;background:#ecfdf5}.aif-flow-node--information.is-craft-evidence .aif-flow-node__header{color:#16634b}
+.aif-flow-node--information.is-craft-warrant{border-color:#c28a25;background:#fffbeb}.aif-flow-node--information.is-craft-warrant .aif-flow-node__header{color:#8a5b13}
+.aif-flow-node--information.is-craft-acknowledgment{border-color:#8b70b3;background:#f5f3ff}.aif-flow-node--information.is-craft-acknowledgment .aif-flow-node__header{color:#634591}
+.aif-flow-node--information.is-craft-objection{border-color:#c86a72;background:#fff1f2}.aif-flow-node--information.is-craft-objection .aif-flow-node__header{color:#9f303a}
+.aif-flow-node--information.is-craft-response{border-color:#458bb1;background:#effaff}.aif-flow-node--information.is-craft-response .aif-flow-node__header{color:#205e80}
+.aif-flow-node--information.is-craft-missing{border-style:dashed;opacity:.78}
 .aif-flow-node__header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;color:#526273;font-size:10px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
 .aif-flow-node__status{flex:0 0 auto;border:1px solid #d5dde7;border-radius:999px;background:#fff;padding:1px 6px;color:#475569;font-size:9px;font-weight:600;letter-spacing:0;text-transform:capitalize}
 .aif-flow-node__status.is-approved{border-color:#a5d2b5;color:#237244}.aif-flow-node__status.is-rejected{border-color:#e7b6b6;color:#a43d3d}.aif-flow-node__status.is-needs-revision{border-color:#e7c58b;color:#895d1d}

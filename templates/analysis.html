@@ -21,11 +21,16 @@
     .draft-panel{min-height:0;flex:1 1 0}.draft-aif-panel{display:flex;flex-direction:column;overflow:hidden;padding:12px 20px 14px;container:aif-panel / inline-size}
     .aif-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0}
     #aifControls{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+    #craftGraphControls{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
     @container aif-panel (max-width:760px){ #aifControls{gap:6px}.aif-toolbar .aif-search{flex:0 0 100%;width:100%}#aifControls #aifArgumentSelect{flex:0 0 100%;width:100%;min-width:0}#aifControls>span.mx-1{display:none} }
+    @container aif-panel (max-width:760px){ #craftGraphControls{gap:6px}#craftGraphControls #craftArgumentSelect{flex:0 0 100%;width:100%;min-width:0}#craftGraphControls>span.mx-1{display:none}}
     .aif-control{height:36px;border:1px solid #cbd5e1;border-radius:7px;background:white;padding:0 10px;color:#334155;font-size:13px}
     #aifControls .aif-action{display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;line-height:1;white-space:nowrap}
+    #craftGraphControls .aif-action{display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;line-height:1;white-space:nowrap}
     #aifControls #aifPrev,#aifControls #aifNext,#aifControls #aifZoomOut,#aifControls #aifZoomIn{width:36px;min-width:36px;padding:0}
+    #craftGraphControls #craftArgumentPrev,#craftGraphControls #craftArgumentNext,#craftGraphControls #craftGraphZoomOut,#craftGraphControls #craftGraphZoomIn{width:36px;min-width:36px;padding:0}
     #aifControls #aifArgumentCount,#aifControls #aifZoomLevel{display:inline-flex;height:36px;align-items:center;justify-content:center;line-height:1;white-space:nowrap}
+    #craftGraphControls #craftArgumentCount,#craftGraphControls #craftGraphZoomLevel{display:inline-flex;height:36px;align-items:center;justify-content:center;line-height:1;white-space:nowrap}
     .aif-control:focus-visible,.aif-action:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
     .aif-select{display:flex;flex:1 1 260px;min-width:0;align-items:center;justify-content:space-between;gap:12px;text-align:left}
     .aif-select-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -58,7 +63,8 @@
     @media(max-width:760px){.draft-dialog{width:100vw;height:100dvh;max-height:100dvh;border-radius:0}.draft-aif-panel{padding:8px 12px 10px}.analysis-view-panel{padding:12px}.aif-toolbar{gap:6px}.aif-search{width:100%}#aifArgumentSelect{flex:1 1 55%;min-width:160px}#sharedSourceInspector{top:auto;left:0;bottom:0;width:100%;max-height:58%;border:1px solid #cbd5e1;border-radius:12px 12px 0 0;box-shadow:0 -4px 12px rgb(15 23 42 / .08)}.aif-workspace{min-height:0}.aif-viewport{min-height:260px}.aif-inspector.is-open{top:auto;right:0;bottom:0;left:0;width:100%;min-width:0;height:min(56%,420px);border-radius:10px 10px 0 0;background:#fff}.aif-inspector-body{padding:12px}}
     @media(prefers-reduced-motion:reduce){ .aif-inspector{transition:none}.analysis-running::before,.analysis-live-dot,.analysis-spinner{animation:none}.analysis-running::before{width:100%;transform:none;opacity:.45}}
     #draftViewArea{width:100%;min-width:0;min-height:0}.analysis-view-panel{min-width:0}
-    @media(max-width:760px){ #aifControls{gap:6px}#aifControls .aif-search{flex:0 0 100%;width:100%}#aifControls #aifArgumentSelect{flex:0 0 100%;width:100%;min-width:0}#aifControls>span.mx-1{display:none}}
+    @media(max-width:760px){ #aifControls,#craftGraphControls{gap:6px}#aifControls .aif-search{flex:0 0 100%;width:100%}#aifControls #aifArgumentSelect,#craftGraphControls #craftArgumentSelect{flex:0 0 100%;width:100%;min-width:0}#aifControls>span.mx-1,#craftGraphControls>span.mx-1{display:none}}
+    @media(max-width:760px){.paper-detail-route #draftCraftView:not(.hidden){height:72vh;min-height:72vh;flex:0 0 72vh;overflow:hidden}.paper-detail-route #draftCraftView .aif-workspace{min-height:0;flex:1 1 0}}
     /* Keep one continuous graph canvas, matching the AIF viewport; let the argument columns use its full width. */
     .paper-detail-route{height:100dvh;overflow:hidden}.paper-detail-route #sidebar,.paper-detail-route #sidebarOverlay,.paper-detail-route .analysis-shell-header,.paper-detail-route .analysis-main-shell{display:none!important}.paper-detail-route #draftModal{position:fixed;inset:0;display:flex!important;align-items:stretch;padding:0;background:white}.paper-detail-route .draft-dialog{width:100%;height:100%;max-height:none;border-radius:0;box-shadow:none}.paper-detail-route #paperPageToolbar{display:flex}.paper-detail-route .draft-header{display:none}
     .paper-detail-route #draftViewArea{display:grid;grid-template-columns:minmax(0,var(--explorer-width,48%)) 7px minmax(320px,1fr);grid-template-rows:minmax(0,1fr);flex:1;overflow:hidden}.paper-detail-route #draftViewArea>.draft-panel:not(.hidden){grid-column:1;grid-row:1;min-width:0;overflow:auto}.paper-detail-route #paperWorkspace{display:contents!important}.paper-detail-route #paperExplorerPane{display:none}.paper-detail-route #pdfPane{grid-column:3;grid-row:1;min-height:0;display:flex;flex-direction:column;border-left:1px solid #cbd5e1}.paper-detail-route #paperSplitHandle{grid-column:2;grid-row:1;cursor:col-resize;background:#e2e8f0;touch-action:none}.paper-detail-route #paperSplitHandle:hover{background:#93c5fd}.paper-detail-route #pdfViewerScroll{flex:1;min-height:0}.pdf-page{position:relative;background:white;box-shadow:0 1px 5px #0002}.pdf-text-layer{position:absolute;inset:0;overflow:hidden;line-height:1;opacity:1;user-select:text}.pdf-text-layer span{position:absolute;color:transparent;white-space:pre;transform-origin:0 0}.pdf-highlight{position:absolute;z-index:2;border-radius:2px;background:#facc1555;outline:0;opacity:.56;mix-blend-mode:multiply;transform:translateY(1px) scaleY(.78);transform-origin:center;pointer-events:auto;cursor:help;transition:opacity .12s ease,box-shadow .12s ease}.pdf-highlight.is-selected{z-index:3;background:#fb923c52!important;box-shadow:inset 0 -2px 0 #f97316;opacity:.9}
@@ -170,11 +176,31 @@
         <div class="mb-3 flex flex-wrap items-end justify-between gap-2"><div><h3 class="text-sm font-semibold text-slate-900">Document structure</h3><p id="imradCompleteness" class="mt-1 text-xs text-slate-500"></p></div><label class="text-xs text-slate-500">Section <select id="imradSectionSelect" class="ml-1 max-w-[min(70vw,420px)] rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700"></select></label></div>
         <div class="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(260px,0.8fr)]"><section><h4 id="imradSectionHeading" class="mb-2 text-sm font-semibold text-slate-800"></h4><div id="imradSectionText" class="max-h-[52vh] overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm leading-6 text-slate-700"></div></section><section><div class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Propositions in this section</div><div id="imradPropositions" class="space-y-2"></div></section></div>
       </div>
-      <div id="draftCraftView" role="tabpanel" aria-labelledby="draftTabCraft" class="draft-panel analysis-view-panel hidden">
-        <div class="mb-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs leading-5 text-blue-900">A source-grounded view of the five elements in <em>The Craft of Research</em>. Missing elements are shown as not identified; reconstructed warrants are marked as AI-inferred and remain subject to review. Older saved analyses may need reanalysis to populate the new role labels.</div>
-        <div id="craftArgumentCards" class="space-y-4" aria-live="polite"></div>
-      </div>
-      <div id="draftScientificTypesView" role="tabpanel" aria-labelledby="draftTabScientificTypes" class="draft-panel analysis-view-panel hidden"><div class="mb-3 flex flex-wrap items-center justify-between gap-3"><div><h3 class="text-sm font-semibold text-slate-900">Scientific proposition types</h3><p class="mt-1 text-xs text-slate-500">Groups reflect the classifications saved in this analysis.</p></div><label class="sr-only" for="scientificTypeSearch">Search scientific propositions</label><input id="scientificTypeSearch" type="search" placeholder="Search propositions" class="w-full max-w-sm rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"></div><div id="scientificTypeGroups" class="space-y-4"></div></div>
+      <div id="draftCraftView" role="tabpanel" aria-labelledby="draftTabCraft" class="draft-panel draft-aif-panel hidden">
+        <div class="mb-1 flex shrink-0 flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-3"><h3 class="text-sm font-semibold text-slate-900">Craft of Research argument graph</h3><span id="craftGraphSummary" class="text-xs text-slate-500"></span></div>
+          <div class="flex min-w-0 flex-wrap items-center justify-end gap-2 text-[10px] text-slate-600" aria-label="Craft model legend"><span>Claim</span><span>Reason</span><span>Evidence</span><span>Warrant</span><span>Acknowledgment / response</span><span>Objection</span></div>
+        </div>
+        <p class="mb-2 shrink-0 text-[10px] leading-4 text-slate-500">Evidence supports reasons; reasons and warrants support the claim. Acknowledgments and objections challenge it; responses defend it. Missing elements appear as dashed nodes.</p>
+        <div id="craftGraphControls" class="aif-toolbar shrink-0">
+          <label class="sr-only" for="craftArgumentSelect">Select a Craft argument</label><select id="craftArgumentSelect" class="aif-control aif-select min-w-0 flex-1" aria-label="Select a Craft argument" disabled></select>
+          <span id="craftArgumentCount" class="min-w-12 text-center text-xs tabular-nums text-slate-500"></span>
+          <button id="craftArgumentPrev" type="button" class="aif-control aif-action px-3 disabled:opacity-40" aria-label="Previous Craft argument">‹</button>
+          <button id="craftArgumentNext" type="button" class="aif-control aif-action px-3 disabled:opacity-40" aria-label="Next Craft argument">›</button>
+          <span class="mx-1 h-5 border-l border-slate-200"></span>
+          <button id="craftGraphZoomOut" type="button" class="aif-control aif-action px-3" aria-label="Zoom out">−</button>
+          <span id="craftGraphZoomLevel" class="w-10 text-center text-xs tabular-nums text-slate-500" aria-live="polite">100%</span>
+          <button id="craftGraphZoomIn" type="button" class="aif-control aif-action px-3" aria-label="Zoom in">+</button>
+          <button id="craftGraphFit" type="button" class="aif-control aif-action px-3">Fit</button>
+          <button id="craftGraphAutoLayout" type="button" class="aif-control aif-action px-3">Auto layout</button>
+        </div>
+        <div id="craftGraphEmpty" class="hidden flex-1 grid place-content-center rounded-md border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-600" role="status" aria-live="polite"></div>
+        <div id="craftGraphViewport" class="aif-workspace relative">
+          <div id="craftGraphCanvas" class="aif-viewport rounded-md" tabindex="0" role="region" aria-label="Interactive Craft of Research argument graph. Drag the canvas to pan and use the mouse wheel to zoom.">
+            <div id="craftReactFlowRoot" aria-label="Craft of Research graph visualization"></div>
+          </div>
+        </div>
+      </div>      <div id="draftScientificTypesView" role="tabpanel" aria-labelledby="draftTabScientificTypes" class="draft-panel analysis-view-panel hidden"><div class="mb-3 flex flex-wrap items-center justify-between gap-3"><div><h3 class="text-sm font-semibold text-slate-900">Scientific proposition types</h3><p class="mt-1 text-xs text-slate-500">Groups reflect the classifications saved in this analysis.</p></div><label class="sr-only" for="scientificTypeSearch">Search scientific propositions</label><input id="scientificTypeSearch" type="search" placeholder="Search propositions" class="w-full max-w-sm rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"></div><div id="scientificTypeGroups" class="space-y-4"></div></div>
       <div id="draftPropositionView" role="tabpanel" aria-labelledby="draftTabPropositions" class="draft-panel hidden overflow-y-auto px-5 py-4 sm:px-7">
         <div id="argumentationUnavailable" class="hidden rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">This draft predates structured argumentation data. <strong>Reanalyze</strong> the paper to extract source-grounded propositions and build its AIF graph.</div>
         <div id="argumentationWorkspace" class="grid min-h-[55vh] gap-4">
@@ -246,73 +272,94 @@
   </div>
 
 <script>
-function renderCraftArguments(){
-  const root=document.getElementById('craftArgumentCards');
-  if(!root)return;
-  root.replaceChildren();
-  const cards=argumentationData?.analysis_payload?.craft_arguments||[];
-  if(!cards.length){
-    uiText(root,'p','rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600','No source-grounded five-part arguments were identified for this paper.');
-    return;
+let selectedCraftArgumentId=null,selectedCraftPaperId=null;
+function buildCraftArgumentGraph(card){
+  const graph={nodes:[],edges:[]},key=String(card.id||card.relation_id||'argument').replaceAll(/[^a-zA-Z0-9_-]/g,'_');
+  let edgeIndex=0;
+  const labels={claim:'1 · Claim',reason:'2 · Reason',evidence:'3 · Evidence',acknowledgment:'4 · Acknowledgment',objection:'4 · Objection',response:'4 · Response',warrant:'5 · Warrant'};
+  function addItems(role,component){
+    const items=component?.items||[],records=(items.length?items:[null]).map((item,index)=>{
+      const missing=!item,id=`craft:${key}:${role}:${index+1}`,baseLabel=labels[role]||role;
+      const label=items.length>1?`${baseLabel} ${index+1}`:baseLabel;
+      const text=missing?'Not identified in this source-grounded analysis.':role==='evidence'?(item.source?.quote||item.text||''):item.text||item.source?.quote||'';
+      const metadata={craft_role:missing?'missing':role,craft_label:label,craft_missing:missing,
+        assertion_origin:item?.assertion_origin||(missing?'not_identified':'source'),
+        review_status:item?.review_status||card.review_status||'pending',source_quote:item?.source?.quote||null};
+      graph.nodes.push({id,node_type:'I',text,proposition_id:item?.proposition_id||null,relation_id:card.relation_id,metadata});
+      return{id,item,missing,role};
+    });
+    return records;
   }
-  function renderPart(parent,label,component,{quoteFirst=false,emptyText='Not identified in the source-grounded analysis.'}={}){
-    const section=document.createElement('section');
-    section.className='rounded-lg border border-slate-200 bg-white p-3';
-    uiText(section,'h4','text-xs font-semibold uppercase tracking-wide text-slate-500',label);
-    const basisNotes={ai_classified_reason_roles:'AI-classified reason candidates; confirm them against the source.',support_relation_statements:'Linked support statements are shown as candidate reasons because this saved analysis did not classify reason roles explicitly.',linked_source_evidence:'Separate source statements linked to these reasons.',verbatim_reason_source_quotes:'Verbatim source quotations for the reasons are shown because no separate evidence statement was linked.'};
-    if(component?.basis&&basisNotes[component.basis])uiText(section,'p','mt-1 text-[10px] leading-4 text-slate-500',basisNotes[component.basis]);
-    const items=component?.items||[];
-    if(!items.length){
-      uiText(section,'p','mt-2 text-sm text-slate-500',emptyText);
-      parent.append(section);
-      return;
-    }
-    const list=document.createElement('div');
-    list.className='mt-2 space-y-2';
-    for(const item of items){
-      const article=document.createElement('article');
-      article.className='rounded-md bg-slate-50 p-3';
-      const quote=item.source?.quote||'';
-      if(quoteFirst&&quote)uiText(article,'blockquote','whitespace-pre-wrap border-l-2 border-blue-300 pl-3 text-sm leading-6 text-slate-800',quote);
-      else if(item.text)uiText(article,'p','whitespace-pre-wrap text-sm leading-6 text-slate-800',item.text);
-      if(!quoteFirst&&quote)uiText(article,'blockquote','mt-2 whitespace-pre-wrap border-l-2 border-slate-300 pl-3 text-xs leading-5 text-slate-600',quote);
-      if(item.text&&quote&&item.text!==quote)uiText(article,'p','mt-2 text-xs text-slate-500','AI-normalized statement: '+item.text);
-      const metadata=[item.source?.page?'Page '+item.source.page:null,item.assertion_origin==='inferred'?'AI-inferred · review required':null,item.review_status?item.review_status.replaceAll('_',' '):null].filter(Boolean);
-      if(metadata.length)uiText(article,'p','mt-2 text-[10px] text-slate-500',metadata.join(' · '));
-      const proposition=(argumentationData?.propositions||[]).find(record=>record.id===item.proposition_id);
-      if(proposition&&quote){
-        const source=uiText(article,'button','mt-2 text-xs font-semibold text-blue-700 hover:underline','Inspect source');
-        source.type='button';
-        source.onclick=()=>{selectDraftTab('propositions');showProposition(proposition)};
-      }
-      list.append(article);
-    }
-    section.append(list);
-    parent.append(section);
+  const claim=addItems('claim',card.claim),reasons=addItems('reason',card.reasons),evidence=addItems('evidence',card.evidence),warrants=addItems('warrant',card.warrant);
+  const fourth=card.acknowledgment_and_response||{},acknowledgments=addItems('acknowledgment',fourth.acknowledgment),objections=addItems('objection',fourth.related_objections),responses=addItems('response',fourth.response);
+  function edge(source,target){graph.edges.push({id:`craft-edge:${key}:${++edgeIndex}`,source_node_id:source,target_node_id:target})}
+  function inference(label,premises,conclusions,suffix){
+    const activePremises=premises.filter(item=>!item.missing),activeConclusions=conclusions.filter(item=>!item.missing);
+    if(!activePremises.length||!activeConclusions.length)return;
+    const id=`craft:${key}:ra:${suffix}`;
+    graph.nodes.push({id,node_type:'RA',text:label,relation_id:card.relation_id,metadata:{scheme_id:label.toLowerCase().replaceAll(/[^a-z0-9]+/g,'_'),craft_label:label,explanation:label}});
+    for(const premise of activePremises)edge(premise.id,id);
+    for(const conclusion of activeConclusions)edge(id,conclusion.id);
   }
-  cards.forEach((card,index)=>{
-    const article=document.createElement('article');
-    article.className='rounded-xl border border-slate-200 bg-white p-4 shadow-sm';
-    uiText(article,'h3','mb-3 text-sm font-semibold text-slate-900','Argument '+(index+1)+' · '+(card.review_status||'pending').replaceAll('_',' '));
-    const grid=document.createElement('div');
-    grid.className='grid gap-3 lg:grid-cols-2';
-    renderPart(grid,'1 · Claim',card.claim);
-    renderPart(grid,'2 · Reasons',card.reasons);
-    renderPart(grid,'3 · Evidence',card.evidence,{quoteFirst:true,emptyText:'No separate source evidence or quotation was identified.'});
-    const fourth=document.createElement('section');
-    fourth.className='space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3';
-    uiText(fourth,'h4','text-xs font-semibold uppercase tracking-wide text-slate-500','4 · Acknowledgment and response');
-    const fourthData=card.acknowledgment_and_response||{};
-    renderPart(fourth,'Acknowledgment',fourthData.acknowledgment,{emptyText:'No explicit acknowledgment was identified.'});
-    renderPart(fourth,'Related objection or alternative',fourthData.related_objections,{emptyText:'No source-backed objection or alternative was linked to this claim.'});
-    renderPart(fourth,'Author response',fourthData.response,{emptyText:'No explicit response was identified.'});
-    grid.append(fourth);
-    renderPart(grid,'5 · Warrant',card.warrant,{emptyText:'No warrant was identified for this argument.'});
-    article.append(grid);
-    root.append(article);
+  inference('Reasons + warrant support claim',[...reasons,...warrants],claim,'main-support');
+  const activeReasons=reasons.filter(item=>!item.missing),activeEvidence=evidence.filter(item=>!item.missing),linkedPairs=new Set();
+  for(const relation of argumentationData?.relations||[]){
+    if(relation.relation_type!=='supports')continue;
+    const premiseIds=new Set(relation.premise_ids||[]),conclusionId=relation.conclusion_id||relation.target_id;
+    for(const source of activeEvidence){
+      if(!source.item?.proposition_id||!premiseIds.has(source.item.proposition_id))continue;
+      const targets=activeReasons.filter(target=>target.item?.proposition_id===conclusionId);
+      if(targets.length){for(const target of targets){inference('Evidence supports reason',[source],[target],`evidence-${edgeIndex}-${source.id}-${target.id}`);linkedPairs.add(`${source.id}|${target.id}`)}}
+    }
+  }
+  if(card.evidence?.basis==='verbatim_reason_source_quotes')for(const source of activeEvidence){
+    const targets=activeReasons.filter(target=>target.item?.proposition_id&&target.item.proposition_id===source.item?.proposition_id);
+    for(const target of targets)if(!linkedPairs.has(`${source.id}|${target.id}`))inference('Source quotation supports reason',[source],[target],`quote-${edgeIndex}-${source.id}-${target.id}`);
+  }
+  const activeClaim=claim.filter(item=>!item.missing),challenges=[...acknowledgments,...objections].filter(item=>!item.missing);
+  challenges.forEach((challenge,index)=>{
+    const id=`craft:${key}:ca:${index+1}`,label=challenge.role==='acknowledgment'?'Acknowledged challenge':'Objection';
+    graph.nodes.push({id,node_type:'CA',text:label,relation_id:card.relation_id,metadata:{craft_label:'Challenges claim',explanation:label}});
+    edge(challenge.id,id);for(const target of activeClaim)edge(id,target.id);
   });
+  responses.filter(item=>!item.missing).forEach((response,index)=>inference('Response defends claim',[response],activeClaim,`response-${index+1}`));
+  return graph;
 }
-</script>
+function renderCraftGraph(card){
+  const viewport=document.getElementById('craftGraphViewport'),empty=document.getElementById('craftGraphEmpty');
+  if(!card){viewport.classList.add('hidden');empty.classList.remove('hidden');empty.classList.add('grid');empty.textContent='No source-grounded five-part arguments were identified. Reanalyze the paper to build a Craft graph.';return}
+  empty.classList.add('hidden');empty.classList.remove('grid');viewport.classList.remove('hidden');
+  const graph=buildCraftArgumentGraph(card),payload={key:`craft:${currentDoi}:${card.id}`,view:'craft',graph};
+  document.getElementById('craftGraphSummary').textContent=`${graph.nodes.length} nodes · ${graph.edges.length} links`;
+  if(window.renderCraftReactFlow)window.renderCraftReactFlow(payload);else window.pendingCraftReactFlow=payload;
+}
+function renderCraftArguments(){
+  const cards=argumentationData?.analysis_payload?.craft_arguments||[],select=document.getElementById('craftArgumentSelect');
+  select.replaceChildren();
+  if(selectedCraftPaperId!==currentDoi){selectedCraftPaperId=currentDoi;selectedCraftArgumentId=null}
+  if(!cards.length){
+    selectedCraftArgumentId=null;select.disabled=true;document.getElementById('craftArgumentCount').textContent='0 / 0';
+    for(const id of ['craftArgumentPrev','craftArgumentNext'])document.getElementById(id).disabled=true;
+    renderCraftGraph(null);return;
+  }
+  cards.forEach((card,index)=>{const option=document.createElement('option'),claim=card.claim?.items?.[0]?.text||'Claim not identified';option.value=card.id;option.textContent=`${index+1}. ${claim}`;select.append(option)});
+  select.disabled=false;
+  const activate=index=>{
+    const bounded=Math.max(0,Math.min(cards.length-1,index)),card=cards[bounded];selectedCraftArgumentId=card.id;select.value=card.id;
+    document.getElementById('craftArgumentCount').textContent=`${bounded+1} / ${cards.length}`;
+    document.getElementById('craftArgumentPrev').disabled=bounded===0;document.getElementById('craftArgumentNext').disabled=bounded===cards.length-1;
+    renderCraftGraph(card);requestAnimationFrame(()=>window.craftGraphControls?.fitView());
+  };
+  const selectedIndex=Math.max(0,cards.findIndex(card=>card.id===selectedCraftArgumentId));
+  select.onchange=()=>activate(cards.findIndex(card=>card.id===select.value));
+  document.getElementById('craftArgumentPrev').onclick=()=>activate(cards.findIndex(card=>card.id===selectedCraftArgumentId)-1);
+  document.getElementById('craftArgumentNext').onclick=()=>activate(cards.findIndex(card=>card.id===selectedCraftArgumentId)+1);
+  document.getElementById('craftGraphZoomOut').onclick=()=>window.craftGraphControls?.zoomOut();
+  document.getElementById('craftGraphZoomIn').onclick=()=>window.craftGraphControls?.zoomIn();
+  document.getElementById('craftGraphFit').onclick=()=>window.craftGraphControls?.fitView();
+  document.getElementById('craftGraphAutoLayout').onclick=()=>window.craftGraphControls?.autoLayout();
+  activate(selectedIndex);
+}</script>
 <script>
 const fields = [
   ['summary','Summary'], ['objective','Research objective'], ['methodology','Methodology'],
@@ -396,6 +443,7 @@ document.getElementById('queueAllBtn').addEventListener('click',()=>enqueue([]))
 document.getElementById('refreshBtn').addEventListener('click',loadPapers);
 document.getElementById('provider').addEventListener('change',providerHint);
 let argumentationData=null,currentDoi='',currentPaper=null;
+window.addEventListener('craft-viewport-move',event=>{document.getElementById('craftGraphZoomLevel').textContent=Math.round(event.detail.zoom*100)+'%'});
 const paperDetailMode=document.body.classList.contains('paper-detail-route');
 function paperUrl(doi){return '/analysis/paper/'+encodeURIComponent(doi)+'?from='+encodeURIComponent('/analysis')}
 function navigatePaper(paper){location.href=paperUrl(paper.doi)}
@@ -429,6 +477,7 @@ function selectDraftTab(tab){
   for(const [key,tid,pid] of analysisTabs){const button=document.getElementById(tid),active=key===tab;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;button.className=active?'rounded-t-md border-b-2 border-blue-600 px-3 py-2 text-sm font-semibold text-blue-700':'rounded-t-md border-b-2 border-transparent px-3 py-2 text-sm font-semibold text-slate-500 hover:text-slate-800';if(active){activePanelId=pid;activeTabId=tid}}
   for(const pid of new Set(analysisTabs.map(([, ,panelId])=>panelId)))document.getElementById(pid).classList.toggle('hidden',pid!==activePanelId);
   if(activePanelId==='draftArgumentGraphView'){const panel=document.getElementById(activePanelId);panel.setAttribute('aria-labelledby',activeTabId);setAifMode(tab==='aif'?'pure':'toulmin')}
+  if(tab==='craft')requestAnimationFrame(()=>window.craftGraphControls?.fitView());
   if(tab==='imrad'&&selectedPropositionId){const item=argumentationData?.propositions?.find(x=>x.id===selectedPropositionId);if(item?.section_id){selectedSectionId=item.section_id;document.getElementById('imradSectionSelect').value=item.section_id;renderImradSection()}}
 }
 function openSharedInspector(){const aside=document.getElementById('sharedSourceInspector');aside.classList.remove('hidden');aside.setAttribute('aria-hidden','false')}
