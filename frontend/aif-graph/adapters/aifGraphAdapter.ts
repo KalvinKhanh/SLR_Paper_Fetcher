@@ -48,6 +48,7 @@ export function adaptAifGraph(graph: AifRawGraph): { nodes: AifFlowNode[]; edges
     const informationRole = isPremise && isConclusion ? 'premise-conclusion' : isPremise ? 'premise' : isConclusion ? 'conclusion' : 'information';
     const premiseCount = node.node_type === 'RA' ? targetEdges.filter((edge) => byId.get(edge.source_node_id)?.node_type === 'I').length : undefined;
     const conclusionCount = node.node_type === 'RA' ? sourceEdges.filter((edge) => byId.get(edge.target_node_id)?.node_type === 'I').length : undefined;
+    const atomicLabels = Array.isArray(node.metadata?.grounded_argument_labels) ? node.metadata.grounded_argument_labels as Array<{ label?: string }> : [];
     const data: AifNodeData = {
       originalNode: node,
       aifType: node.node_type,
@@ -57,6 +58,7 @@ export function adaptAifGraph(graph: AifRawGraph): { nodes: AifFlowNode[]; edges
       premiseCount,
       conclusionCount,
       reviewStatus: String(node.metadata?.review_status || 'pending'),
+      groundedLabel: String(node.metadata?.grounded_label || atomicLabels[0]?.label || ''),
       sourceHandles: sourceEdges.map((edge, index) => ({ id: `out-${index}`, side: Position.Right, offset: (index + 1) / (sourceEdges.length + 1) })),
       targetHandles: targetEdges.map((edge, index) => ({ id: `in-${index}`, side: Position.Left, offset: (index + 1) / (targetEdges.length + 1) })),
       width: size.width,

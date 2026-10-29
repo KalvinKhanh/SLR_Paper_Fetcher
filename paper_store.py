@@ -92,6 +92,18 @@ class PaperStore:
                     item_id TEXT NOT NULL, item_type TEXT NOT NULL, decision TEXT NOT NULL,
                     note TEXT, reviewer TEXT NOT NULL DEFAULT 'local-user', created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS rubric_reviews (
+                    id INTEGER PRIMARY KEY, run_id TEXT NOT NULL REFERENCES analysis_runs(id) ON DELETE CASCADE,
+                    argument_id TEXT NOT NULL, dimension TEXT NOT NULL, score INTEGER NOT NULL CHECK(score BETWEEN 0 AND 4),
+                    rationale TEXT NOT NULL DEFAULT '', reviewer TEXT NOT NULL, created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS rubric_reviews_run ON rubric_reviews(run_id, dimension, argument_id, reviewer, id);
+                CREATE TABLE IF NOT EXISTS citation_reviews (
+                    id INTEGER PRIMARY KEY, run_id TEXT NOT NULL REFERENCES analysis_runs(id) ON DELETE CASCADE,
+                    citation_id TEXT NOT NULL, status TEXT NOT NULL, rationale TEXT NOT NULL DEFAULT '',
+                    reviewer TEXT NOT NULL, created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS citation_reviews_run ON citation_reviews(run_id, citation_id, reviewer, id);
                 CREATE TABLE IF NOT EXISTS cross_paper_batches (
                     id TEXT PRIMARY KEY, status TEXT NOT NULL, provider TEXT, model TEXT,
                     prompt_version TEXT NOT NULL, error TEXT, created_at TEXT NOT NULL, completed_at TEXT
@@ -317,6 +329,8 @@ class PaperStore:
             nodes = [dict(row) for row in db.execute("SELECT * FROM aif_nodes WHERE run_id=? ORDER BY rowid", (run_id,))]
             edges = [dict(row) for row in db.execute("SELECT * FROM aif_edges WHERE run_id=? ORDER BY rowid", (run_id,))]
             reviews = [dict(row) for row in db.execute("SELECT * FROM review_decisions WHERE run_id=? ORDER BY created_at", (run_id,))]
+            rubric_reviews = [dict(row) for row in db.execute("SELECT * FROM rubric_reviews WHERE run_id=? ORDER BY id", (run_id,))]
+            citation_reviews = [dict(row) for row in db.execute("SELECT * FROM citation_reviews WHERE run_id=? ORDER BY id", (run_id,))]
         for row in (sections + nodes):
             key = "provenance" if "provenance" in row else "metadata"
             row[key] = json.loads(row.get(key) or "{}")
@@ -341,7 +355,7 @@ class PaperStore:
         run["propositions"] = propositions
         run["relations"] = relations
         try:
-            from ai_analysis import ARGUMENT_CARD_SCHEMA_VERSION, build_aif_graph, build_unified_analysis
+            from ai_analysis import ARGUMENT_CARD_SCHEMA_VERSION, build_aif_graph, build_unified_analysis, empty_mvp3_payload
             if not run["analysis_payload"].get("schema_version"):
                 run["analysis_payload"] = build_unified_analysis(doi, propositions, relations)
                 run["analysis_payload"]["provenance"]["legacy_run_derived_at_read"] = True
@@ -355,6 +369,9 @@ class PaperStore:
                 refreshed = build_unified_analysis(doi, propositions, relations)
                 run["analysis_payload"]["craft_arguments"] = refreshed["craft_arguments"]
                 run["analysis_payload"].setdefault("provenance", {})["craft_arguments_rederived_at_read"] = True
+            mvp3_payload = run["analysis_payload"].setdefault("mvp3", {})
+            for key, value in empty_mvp3_payload().items():
+                mvp3_payload.setdefault(key, value)
         except (ImportError, KeyError, TypeError):
             build_aif_graph = None
         proposition_by_id = {item["id"]: item for item in propositions}
@@ -364,17 +381,222 @@ class PaperStore:
             if record:
                 node["metadata"].update({"review_status": record.get("review_status", "pending"),
                                          "is_inferred": bool(record.get("is_inferred"))})
+        derived_graph = None
+        derived_validation = None
         try:
             if build_aif_graph is None:
                 raise ImportError("AIF graph builder unavailable")
-            graph, validation = build_aif_graph(propositions, relations, run["analysis_payload"])
-            nodes, edges = graph["nodes"], graph["edges"]
-            run["validation"] = validation
+            derived_graph, derived_validation = build_aif_graph(propositions, relations, run["analysis_payload"])
+            nodes, edges = derived_graph["nodes"], derived_graph["edges"]
+            run["validation"] = derived_validation
         except (ImportError, KeyError, TypeError):
             pass
-        run["graph"] = {"nodes": nodes, "edges": edges, "version": run.get("graph_version", 1)}
+        run["graph"] = {"nodes": nodes, "edges": edges, "version": run.get("graph_version", 1),
+                        "schema_version": derived_graph.get("version", 1) if derived_graph else 1,
+                        "validation": derived_validation or run.get("validation", {}),
+                        "semantics": derived_graph.get("semantics", {}) if derived_graph else {}}
+        run["analysis_payload"].setdefault("mvp3", {"schema_version": 1, "status": "not_run",
+            "rubric_version": "1.0", "citation_verifications": [], "citation_reviews": [],
+            "citation_benchmark": {}, "rubric_assessments": [], "rubric_anchors": {},
+            "reviewer_scores": [], "benchmark": {"reviewer_count": 0, "ready": False, "dimensions": {}},
+            "provenance": None, "stale": False})
+        benchmark = self._rubric_benchmark(run["analysis_payload"].get("mvp3", {}), rubric_reviews)
+        run["analysis_payload"]["mvp3"]["reviewer_scores"] = rubric_reviews
+        run["analysis_payload"]["mvp3"]["benchmark"] = benchmark
+        run["analysis_payload"]["mvp3"]["citation_reviews"] = citation_reviews
+        run["analysis_payload"]["mvp3"]["citation_benchmark"] = self._citation_benchmark(
+            run["analysis_payload"].get("mvp3", {}), citation_reviews)
         run["reviews"] = reviews
         return run
+
+    @staticmethod
+    def _quadratic_weighted_kappa(left, right):
+        if len(left) != len(right) or len(left) < 2:
+            return None
+        count = len(left)
+        observed = sum(((a - b) / 4) ** 2 for a, b in zip(left, right)) / count
+        left_counts = {score: left.count(score) / count for score in range(5)}
+        right_counts = {score: right.count(score) / count for score in range(5)}
+        expected = sum(left_counts[a] * right_counts[b] * ((a - b) / 4) ** 2
+                       for a in range(5) for b in range(5))
+        return None if expected == 0 else round(1 - observed / expected, 4)
+
+    @classmethod
+    def _rubric_benchmark(cls, mvp3, review_rows):
+        dimensions = ("logical_validity", "evidence_sufficiency", "evidence_credibility",
+                      "relevance", "attack_resilience", "scientific_qualification")
+        latest = {}
+        for row in review_rows:
+            latest[(row["argument_id"], row["dimension"], row["reviewer"])] = row
+        reviewers = sorted({key[2] for key in latest})
+        model_scores = {}
+        for assessment in mvp3.get("rubric_assessments", []):
+            for value in assessment.get("dimensions", []):
+                if value.get("score_status") == "assessed" and isinstance(value.get("score"), int):
+                    model_scores[(assessment.get("argument_id"), value.get("dimension"))] = value["score"]
+        output = {}
+        all_dimensions_have_overlap = True
+        for dimension in dimensions:
+            by_reviewer = {reviewer: {argument_id: row["score"] for (argument_id, value_dimension, value_reviewer), row in latest.items()
+                                      if value_dimension == dimension and value_reviewer == reviewer}
+                           for reviewer in reviewers}
+            pairs = []
+            dimension_has_overlap = False
+            for left_index, left_name in enumerate(reviewers):
+                for right_name in reviewers[left_index + 1:]:
+                    shared = sorted(set(by_reviewer[left_name]) & set(by_reviewer[right_name]))
+                    if len(shared) >= 2:
+                        dimension_has_overlap = True
+                    pairs.append({"reviewers": [left_name, right_name], "overlap": len(shared),
+                        "quadratic_weighted_kappa": cls._quadratic_weighted_kappa(
+                            [by_reviewer[left_name][item] for item in shared],
+                            [by_reviewer[right_name][item] for item in shared])})
+            all_dimensions_have_overlap = all_dimensions_have_overlap and dimension_has_overlap
+            human_model_pairs = [(model_scores[(argument_id, dimension)], row["score"], row["reviewer"])
+                for (argument_id, value_dimension, _reviewer), row in latest.items()
+                if value_dimension == dimension and (argument_id, dimension) in model_scores]
+            model_metrics = {}
+            for reviewer in reviewers:
+                matched = [(predicted, human) for predicted, human, name in human_model_pairs if name == reviewer]
+                model_metrics[reviewer] = {"n": len(matched),
+                    "mae": round(sum(abs(predicted - human) for predicted, human in matched) / len(matched), 4) if matched else None,
+                    "quadratic_weighted_kappa": cls._quadratic_weighted_kappa(
+                        [pair[0] for pair in matched], [pair[1] for pair in matched])}
+            output[dimension] = {"human_rating_count": sum(len(values) for values in by_reviewer.values()),
+                "reviewer_pairwise_agreement": pairs, "model_vs_reviewer": model_metrics,
+                "ready": dimension_has_overlap}
+        return {"reviewer_count": len(reviewers), "reviewers": reviewers,
+            "ready": len(reviewers) >= 2 and all_dimensions_have_overlap,
+            "minimum_overlap_for_kappa": 2, "dimensions": output,
+            "interpretation": "Agreement metrics are descriptive and are not a validated scientific-quality score."}
+
+    @staticmethod
+    def _citation_benchmark(mvp3, review_rows):
+        classes = ("SUPPORTS", "REFUTES", "NOT_ENOUGH_INFO")
+        latest = {}
+        for row in review_rows:
+            latest[(row["citation_id"], row["reviewer"])] = row
+        reviewers = sorted({key[1] for key in latest})
+        model_labels = {item.get("id"): item.get("status")
+                        for item in mvp3.get("citation_verifications", []) if item.get("id")}
+        eligible_model_labels = [status for status in model_labels.values() if status in classes]
+        model_non_support_rate = (sum(status in {"REFUTES", "NOT_ENOUGH_INFO"} for status in eligible_model_labels) /
+                                  len(eligible_model_labels)) if eligible_model_labels else None
+        pairs, sufficient_overlap = [], False
+        for left_index, left_name in enumerate(reviewers):
+            for right_name in reviewers[left_index + 1:]:
+                shared = sorted({citation_id for citation_id, reviewer in latest if reviewer == left_name} &
+                                {citation_id for citation_id, reviewer in latest if reviewer == right_name})
+                if len(shared) >= 2:
+                    sufficient_overlap = True
+                matches = sum(latest[(citation_id, left_name)]["status"] == latest[(citation_id, right_name)]["status"]
+                              for citation_id in shared)
+                pairs.append({"reviewers": [left_name, right_name], "overlap": len(shared),
+                    "raw_agreement": round(matches / len(shared), 4) if shared else None})
+        model_metrics = {}
+        for reviewer in reviewers:
+            aligned = [(model_labels.get(citation_id), row["status"])
+                       for (citation_id, value_reviewer), row in latest.items()
+                       if value_reviewer == reviewer and row["status"] in classes and model_labels.get(citation_id) in classes]
+            by_class, f1_values = {}, []
+            for label in classes:
+                tp = sum(predicted == label and gold == label for predicted, gold in aligned)
+                fp = sum(predicted == label and gold != label for predicted, gold in aligned)
+                fn = sum(predicted != label and gold == label for predicted, gold in aligned)
+                precision = tp / (tp + fp) if tp + fp else None
+                recall = tp / (tp + fn) if tp + fn else None
+                f1 = (2 * precision * recall / (precision + recall)) if precision is not None and recall is not None and precision + recall else 0.0
+                by_class[label] = {"support": tp + fn,
+                    "precision": round(precision, 4) if precision is not None else None,
+                    "recall": round(recall, 4) if recall is not None else None,
+                    "f1": round(f1, 4)}
+                f1_values.append(f1)
+            reviewer_rows = [row for (citation_id, name), row in latest.items() if name == reviewer and row["status"] in classes]
+            model_metrics[reviewer] = {"n": len(aligned),
+                "macro_f1": round(sum(f1_values) / len(f1_values), 4) if aligned else None,
+                "classes": by_class,
+                "human_non_support_rate": round(sum(row["status"] in {"REFUTES", "NOT_ENOUGH_INFO"}
+                                                    for row in reviewer_rows) / len(reviewer_rows), 4)
+                                          if reviewer_rows else None}
+        return {"reviewer_count": len(reviewers), "reviewers": reviewers,
+            "reviewer_pairwise_agreement": pairs, "model_vs_reviewer": model_metrics,
+            "model_non_support_rate": round(model_non_support_rate, 4) if model_non_support_rate is not None else None,
+            "minimum_overlap_for_agreement": 2,
+            "ready": len(reviewers) >= 2 and sufficient_overlap,
+            "interpretation": "Citation metrics compare model labels with saved human labels on eligible three-class cases; UNVERIFIED and NO_CITATION are excluded from macro F1 and non-support rates."}
+
+    def save_mvp3_evaluation(self, doi, evaluation):
+        now = datetime.now(timezone.utc).isoformat()
+        with self.connect() as db:
+            row = db.execute("SELECT id,analysis_payload FROM analysis_runs WHERE doi=? ORDER BY created_at DESC LIMIT 1", (doi,)).fetchone()
+            if not row:
+                return None
+            expected_run_id = (evaluation.get("provenance") or {}).get("analysis_run_id")
+            if expected_run_id and row["id"] != expected_run_id:
+                return None
+            payload = json.loads(row["analysis_payload"] or "{}")
+            mvp3 = payload.setdefault("mvp3", {"schema_version": 1, "citation_verifications": [],
+                "rubric_assessments": [], "evaluation_history": []})
+            selected_args = set((evaluation.get("provenance") or {}).get("argument_ids", []))
+            selected_claims = {item.get("claim_proposition_id") for item in evaluation.get("rubric_assessments", [])}
+            mvp3["citation_verifications"] = [item for item in mvp3.get("citation_verifications", [])
+                if item.get("claim_proposition_id") not in selected_claims] + evaluation.get("citation_verifications", [])
+            mvp3["rubric_assessments"] = [item for item in mvp3.get("rubric_assessments", [])
+                if item.get("argument_id") not in selected_args] + evaluation.get("rubric_assessments", [])
+            mvp3.update({key: value for key, value in evaluation.items()
+                         if key not in {"citation_verifications", "rubric_assessments", "reviewer_scores", "benchmark"}})
+            mvp3["status"] = "complete"
+            mvp3["stale"] = False
+            mvp3.setdefault("evaluation_history", []).append({"evaluated_at": now,
+                "provider": (evaluation.get("provenance") or {}).get("provider"),
+                "model": (evaluation.get("provenance") or {}).get("model"),
+                "argument_ids": sorted(selected_args)})
+            mvp3["evaluation_history"] = mvp3["evaluation_history"][-50:]
+            db.execute("UPDATE analysis_runs SET analysis_payload=?,graph_version=graph_version+1 WHERE id=?",
+                       (json.dumps(payload, ensure_ascii=False), row["id"]))
+            return mvp3
+
+    def save_rubric_review(self, doi, argument_id, dimension, score, reviewer, rationale=""):
+        from ai_analysis import MVP3_DIMENSIONS
+        reviewer = str(reviewer or "").strip()
+        if dimension not in MVP3_DIMENSIONS or not isinstance(score, int) or isinstance(score, bool) or not 0 <= score <= 4:
+            raise ValueError("Choose a rubric dimension and score from 0 to 4.")
+        if not reviewer or len(reviewer) > 120:
+            raise ValueError("A reviewer name or ID (up to 120 characters) is required.")
+        now = datetime.now(timezone.utc).isoformat()
+        with self.connect() as db:
+            run = db.execute("SELECT id,analysis_payload FROM analysis_runs WHERE doi=? ORDER BY created_at DESC LIMIT 1", (doi,)).fetchone()
+            if not run:
+                return False
+            payload = json.loads(run["analysis_payload"] or "{}")
+            if not any(item.get("id") == argument_id for item in payload.get("arguments", [])):
+                return False
+            db.execute("INSERT INTO rubric_reviews(run_id,argument_id,dimension,score,rationale,reviewer,created_at) VALUES(?,?,?,?,?,?,?)",
+                       (run["id"], argument_id, dimension, score, str(rationale or "")[:2000], reviewer, now))
+            db.execute("UPDATE analysis_runs SET graph_version=graph_version+1 WHERE id=?", (run["id"],))
+        return True
+
+    def save_citation_review(self, doi, citation_id, status, reviewer, rationale=""):
+        statuses = {"SUPPORTS", "REFUTES", "NOT_ENOUGH_INFO", "UNVERIFIED", "NO_CITATION"}
+        status = str(status or "").strip().upper()
+        reviewer = str(reviewer or "").strip()
+        if status not in statuses:
+            raise ValueError("Choose a citation status from the supported labels.")
+        if not reviewer or len(reviewer) > 120:
+            raise ValueError("A reviewer name or ID (up to 120 characters) is required.")
+        now = datetime.now(timezone.utc).isoformat()
+        with self.connect() as db:
+            run = db.execute("SELECT id,analysis_payload FROM analysis_runs WHERE doi=? ORDER BY created_at DESC LIMIT 1", (doi,)).fetchone()
+            if not run:
+                return False
+            payload = json.loads(run["analysis_payload"] or "{}")
+            known_ids = {item.get("id") for item in payload.get("mvp3", {}).get("citation_verifications", [])}
+            if citation_id not in known_ids:
+                return False
+            db.execute("INSERT INTO citation_reviews(run_id,citation_id,status,rationale,reviewer,created_at) VALUES(?,?,?,?,?,?)",
+                       (run["id"], citation_id, status, str(rationale or "")[:2000], reviewer, now))
+            db.execute("UPDATE analysis_runs SET graph_version=graph_version+1 WHERE id=?", (run["id"],))
+        return True
 
     def review_analysis_item(self, doi, item_id, item_type, decision, note="", reviewer="local-user"):
         if item_type not in {"proposition", "relation", "quality_assessment", "reviewer_question"} or decision not in {"approved", "rejected", "needs_revision"}:
@@ -404,6 +626,11 @@ class PaperStore:
                     item.setdefault("comments", []).append({"text": note[:2000], "reviewer": reviewer[:200], "created_at": now})
                 payload.setdefault("review_history", []).append({"item_id": item_id, "item_type": item_type,
                     "decision": decision, "note": note[:2000], "reviewer": reviewer[:200], "created_at": now})
+                db.execute("UPDATE analysis_runs SET analysis_payload=? WHERE id=?", (json.dumps(payload, ensure_ascii=False), run["id"]))
+            stored = db.execute("SELECT analysis_payload FROM analysis_runs WHERE id=?", (run["id"],)).fetchone()
+            payload = json.loads(stored["analysis_payload"] or "{}")
+            if payload.get("mvp3"):
+                payload["mvp3"]["stale"] = True
                 db.execute("UPDATE analysis_runs SET analysis_payload=? WHERE id=?", (json.dumps(payload, ensure_ascii=False), run["id"]))
             db.execute("INSERT INTO review_decisions(run_id,item_id,item_type,decision,note,reviewer,created_at) VALUES(?,?,?,?,?,?,?)",
                        (run["id"], item_id, item_type, decision, note[:2000], reviewer[:200], now))
@@ -557,10 +784,13 @@ class PaperStore:
             db.execute("INSERT INTO review_decisions(run_id,item_id,item_type,decision,note,reviewer,created_at,change_json) VALUES(?,?,?,?,?,?,?,?)",
                        (run_id, item_id, item_type, "edited", note[:2000], "local-user", now, change_record))
             db.execute("UPDATE analysis_runs SET graph_version=graph_version+1 WHERE id=?", (run_id,))
+            stored = db.execute("SELECT analysis_payload FROM analysis_runs WHERE id=?", (run_id,)).fetchone()
+            payload = json.loads(stored["analysis_payload"] or "{}")
             if item_type in {"proposition", "relation"}:
-                stored = db.execute("SELECT analysis_payload FROM analysis_runs WHERE id=?", (run_id,)).fetchone()
-                payload = json.loads(stored["analysis_payload"] or "{}")
                 payload["derived_data_stale"] = True
+            if payload.get("mvp3"):
+                payload["mvp3"]["stale"] = True
+            if item_type in {"proposition", "relation"} or payload.get("mvp3"):
                 db.execute("UPDATE analysis_runs SET analysis_payload=? WHERE id=?", (json.dumps(payload, ensure_ascii=False), run_id))
             db.execute("UPDATE cross_paper_relationships SET stale=1 WHERE source_doi=? OR target_doi=?", (doi, doi))
         return True
